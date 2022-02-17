@@ -82,8 +82,8 @@ if __name__ == '__main__':
     # Eq.(7)
     for i_x in range(map_size):
         for i_y in range(map_size):
+            sum_X_ijk = 0
             for j_x in range(map_size):
-                sum_X_ijk = 0
                 for j_y in range(map_size):
                     if (i_x, i_y) != (j_x, j_y):
                         sum_X_ijk += X_ijk[(i_x,i_y),(j_x,j_y)]
