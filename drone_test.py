@@ -2,8 +2,10 @@ import random
 import time
 import argparse
 import numpy as np
-from or_tool_test import MD_path_plan_main
+from model_MD import Mission_Drone
+from model_HD import Honey_Drone
 
+from or_tool_test import MD_path_plan_main
 # from gym_pybullet_drones.envs.BaseAviary import BaseAviary, DroneModel, Physics
 from gym_pybullet_drones.envs.BaseAviary import DroneModel, Physics
 from gym_pybullet_drones.envs.CtrlAviary import CtrlAviary
@@ -39,6 +41,18 @@ if __name__ == "__main__":
     tao_lower = 1   # The lower bounds of the number of MDs that HDs can protect simultaneously
     tao_upper = 3   # The upper bounds of the number of MDs that HDs can protect simultaneously
     target_map_size = 8 # size of surveillance area (map size)
+
+    # create model class
+    MD_set = set()
+    HD_set = set()
+
+    for index in range(num_MD):
+        MD_set.add(Mission_Drone(index))
+
+    for index in range(num_HD):
+        HD_set.add(Honey_Drone(index))
+
+
 
 
     #### Define and parse (optional) arguments for the script ##
@@ -189,7 +203,7 @@ if __name__ == "__main__":
             # Algorithm 1 in paper
             L_MD_set = np.arange(num_MD)
             L_HD_set = np.arange(num_MD, num_MD+num_HD)
-            max_radius = maximum_signal_radius_HD
+            max_radius = Honey_Drone.maximum_signal_radius
             p_H_r = (sg_HD * max_radius) / max_sg_HD # actual signal radius under given defense strategy sg_HD
             S_set_HD = {} # A set of HDs with assigned MDs
             for HD_id in L_HD_set:
