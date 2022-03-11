@@ -1,6 +1,8 @@
+import random
 import time
 import argparse
 import numpy as np
+from or_tool_test import MD_path_plan_main
 
 # from gym_pybullet_drones.envs.BaseAviary import BaseAviary, DroneModel, Physics
 from gym_pybullet_drones.envs.BaseAviary import DroneModel, Physics
@@ -15,17 +17,34 @@ from gym_pybullet_drones.utils.utils import sync, str2bool
 # Note: adjust debug camera target point by edit resetDebugVisualizerCamera in 'BaseAviary.py'
 # debug camera keymap, see: https://github.com/robotlearn/pyrobolearn/blob/master/docs/pybullet.md
 
-def stepToTarget(preXYZ: np.array, tarXYZ: np.array, control_freq_hz: int) -> list:
-    return_XYZ = (tarXYZ - preXYZ) / control_freq_hz + preXYZ
+def stepToTarget(preXYZ: np.array, Desti_XYZ: np.array, control_freq_hz: int) -> list:
+    return_XYZ = (Desti_XYZ - preXYZ) / control_freq_hz + preXYZ
     return return_XYZ
+
+# distance between two drones. (Eq. \eqref(Eq: distance) in paper)
+def drones_distance(drone_x_location, drone_y_location):
+    distance_squre =  np.square(drone_x_location- drone_y_location)
+    return np.sqrt(np.sum(distance_squre))
 
 
 
 if __name__ == "__main__":
+    #### default parameters:
+    num_MD = 3  # number of MD (in index, MD first then HD)
+    num_HD = 1  # number of HD
+    maximum_signal_radius_HD = 3    # signal radius of HD
+    sg_HD = 5 # defense strategy, range [0, 10]
+    min_sg_HD = 0   # minimum signal level defender can choose
+    max_sg_HD = 10  # maximum signal level defender can choose
+    tao_lower = 1   # The lower bounds of the number of MDs that HDs can protect simultaneously
+    tao_upper = 3   # The upper bounds of the number of MDs that HDs can protect simultaneously
+    target_map_size = 8 # size of surveillance area (map size)
+
+
     #### Define and parse (optional) arguments for the script ##
     parser = argparse.ArgumentParser(description='Helix flight script using CtrlAviary or VisionAviary and DSLPIDControl')
-    parser.add_argument('--drone',              default="cf2x",     type=DroneModel,    help='Drone model (default: CF2X)', metavar='', choices=DroneModel)
-    parser.add_argument('--num_drones',         default=5,          type=int,           help='Number of drones (default: 3)', metavar='')
+    parser.add_argument('--drone',              default="cf2p",     type=DroneModel,    help='Drone model (default: CF2X)', metavar='', choices=DroneModel)
+    parser.add_argument('--num_drones',         default=num_HD + num_MD, type=int, help='Number of drones', metavar='')
     parser.add_argument('--physics',            default="pyb",      type=Physics,       help='Physics updates (default: PYB)', metavar='', choices=Physics)
     parser.add_argument('--vision',             default=False,      type=str2bool,      help='Whether to use VisionAviary (default: False)', metavar='')
     parser.add_argument('--gui',                default=True,       type=str2bool,      help='Whether to use PyBullet GUI (default: True)', metavar='')
@@ -41,7 +60,7 @@ if __name__ == "__main__":
 
 
     #### Initialize the simulation #############################
-    H = 0.1
+    H = 1
     H_STEP = .05
     R = .3
 
@@ -86,15 +105,16 @@ if __name__ == "__main__":
     # initial target scan area/map
     map_x = 1   # original point of target area
     map_y = 1
-    map_size = 5
-    map_border = 1  # create a boarder to avoid 'index error'
+
+    map_border = 0  # create a boarder to avoid 'index error'
     map_x_index_const = map_x - map_border
     map_y_index_const = map_y - map_border
-    map_size_with_border = map_size + (2 * map_border)
+    map_size_with_border = target_map_size+1 + (2 * map_border)
+    print("map_size_with_border", map_size_with_border)
     scan_map = np.zeros((map_size_with_border,map_size_with_border))
     # index_const = int(map_size_with_border/2)
 
-    # initial position for drones
+    # initial position for drones (MD+HD)
     Desti_XYZ = INIT_XYZS
     for i in range(ARGS.num_drones):
         Desti_XYZ[i] = INIT_XYZS[i]
@@ -102,33 +122,117 @@ if __name__ == "__main__":
     PRE_XYZ = Desti_XYZ
 
     # path planning
-    drones_path = {}
-    for id in range(ARGS.num_drones):
-        x_temp_set = np.zeros(map_size).reshape(map_size,1) + map_x + id
-        y_temp_set = np.arange(map_size).reshape(map_size,1) + map_y
-        z_temp_set = np.random.uniform(2, 2, map_size).reshape(map_size,1)
-        drones_path[id] = np.concatenate((x_temp_set, y_temp_set), axis = 1)
-        drones_path[id] = np.concatenate((drones_path[id], z_temp_set), axis=1)
+    # drones_path_MD = {}
+    # for id in range(ARGS.num_drones):
+    #     x_temp_set = np.zeros(target_map_size).reshape(target_map_size,1) + map_x + id
+    #     y_temp_set = np.arange(target_map_size).reshape(target_map_size,1) + map_y
+    #     z_temp_set = np.random.uniform(2, 2, target_map_size).reshape(target_map_size,1)
+    #     drones_path_MD[id] = np.concatenate((x_temp_set, y_temp_set), axis = 1)
+    #     drones_path_MD[id] = np.concatenate((drones_path_MD[id], z_temp_set), axis=1)
 
-    print("drones_path", drones_path)
+    # path planning for MD
+    print("Calculating MD trajectory......")
+    drones_path_MD = MD_path_plan_main(num_MD, target_map_size)
+
+    # Z height for MD
+    z_range_start_MD = 1
+    z_range_end_MD = 2
+    if num_MD == 1:
+        z_mutiplier = z_range_end_MD
+    else:
+        z_mutiplier = (z_range_end_MD - z_range_start_MD) / (num_MD - 1)
+    for id in range(num_MD):
+        drones_path_MD[id] = np.insert(drones_path_MD[id], 2, z_mutiplier * id + z_range_start_MD, axis=1)
+
+    # path planning for HD
+    drones_deploy_HD = {}
+    for i in range(num_HD):
+        drones_deploy_HD[i] = np.ones(3) # this deployment only depends on MD's latest location
+
+    # Z height for HD
+    z_range_start_HD = 2.2
+    z_range_end_HD = 3
+    if num_HD == 1:
+        z_mutiplier = z_range_end_HD
+    else:
+        z_mutiplier = (z_range_end_HD - z_range_start_HD) / (num_HD - 1)
+    for id in range(num_HD):
+        drones_deploy_HD[id][2] = z_mutiplier * id + z_range_start_HD
+        # drones_deploy_HD[id] = np.insert(drones_deploy_HD[id], 2, z_mutiplier * id + z_range_start_HD, axis=1)
+
+    # initial position for HD
+    # for i in range(num_MD, num_MD+num_HD):
+    #     Desti_XYZ[i] = drones_deploy_HD[i-num_MD]
+
 
     while True:
-        # update destinatin for drones
-        if frameN % 500 == 0:
-            for i in range(ARGS.num_drones):
-                # print(drones_path[i])
-                # Desti_XYZ[i] = np.array([np.random.uniform(map_x, map_x + map_size), np.random.uniform(map_y, map_y + map_size), np.random.uniform(0, 2)])
-                Desti_XYZ[i] = drones_path[i][0]
-                if drones_path[i].shape[0] > 1:
-                    drones_path[i] = drones_path[i][1:,:]
+        # update destination for drones (every 500 frames)
+        update_freq = 500
+        if frameN % update_freq == 0:
+
+            # avoid HD crash when creating
+            if frameN <= update_freq:
+                for i in range(num_MD, num_MD+num_HD):
+                    Desti_XYZ[i] = drones_deploy_HD[i-num_MD]
+
+            # for MD
+            for i in range(num_MD):
+                # print(drones_path_MD[i])
+                # Desti_XYZ[i] = np.array([np.random.uniform(map_x, map_x + target_map_size), np.random.uniform(map_y, map_y + target_map_size), np.random.uniform(0, 2)])
+                Desti_XYZ[i] = drones_path_MD[i][0]
+                if drones_path_MD[i].shape[0] > 1:
+                    drones_path_MD[i] = drones_path_MD[i][1:, :]
                 # print("Desti_XYZ: ", i, Desti_XYZ[i])
-            print("scan_map \n", scan_map)
-        TARG_XYZS = stepToTarget(PRE_XYZ, Desti_XYZ, ARGS.control_freq_hz)
+            print("scan_map \n", scan_map.round(1))
 
-        PRE_XYZ = TARG_XYZS
+            # for HD
+            # Algorithm 1 in paper
+            L_MD_set = np.arange(num_MD)
+            L_HD_set = np.arange(num_MD, num_MD+num_HD)
+            max_radius = maximum_signal_radius_HD
+            p_H_r = (sg_HD * max_radius) / max_sg_HD # actual signal radius under given defense strategy sg_HD
+            S_set_HD = {} # A set of HDs with assigned MDs
+            for HD_id in L_HD_set:
+                if L_MD_set.size == 0:
+                    S_set_HD[HD_id] = np.empty(0, dtype=int)
+                    continue
 
+                N_l_H_set = np.empty(0) # A set of MDs detected/protected by HD
+                for MD_id in L_MD_set:
+                    if drones_distance(Desti_XYZ[MD_id], Desti_XYZ[HD_id]) < p_H_r:
+                        N_l_H_set = np.append(N_l_H_set, MD_id)
 
+                if N_l_H_set.size < tao_lower:
+                    HD_pos_candidate = np.zeros(3)
+                    N_l_H_new_set = np.empty(0)
+                    for MD_id in L_MD_set:      # search MD position that HD can move to so more MD can be protected
+                        temp_set = np.empty(0)
+                        for MD_id in L_MD_set:
+                            temp_position = Desti_XYZ[HD_id]
+                            temp_position[:2] = Desti_XYZ[MD_id][:2]
+                            if drones_distance(Desti_XYZ[MD_id], Desti_XYZ[MD_id]) < p_H_r:
+                                temp_set = np.append(temp_set, MD_id)
+                        if temp_set.size > N_l_H_new_set.size:  # set new position as candidate
+                            N_l_H_new_set = temp_set
+                            HD_pos_candidate = Desti_XYZ[MD_id]
+                    Desti_XYZ[HD_id][:2] = HD_pos_candidate[:2]
+                    print("HD new position", HD_id, Desti_XYZ[HD_id])
+                    N_l_H_new_subset = N_l_H_new_set[:tao_upper]
+                    L_MD_set = np.delete(L_MD_set, np.searchsorted(L_MD_set, N_l_H_new_subset))    # Remove protected MDs from set L_MD_set
+                    S_set_HD[HD_id] = N_l_H_new_subset  # Add deployed HD to set S_set_HD
+                elif tao_lower <= N_l_H_set.size and N_l_H_set.size <= tao_upper:
+                    L_MD_set = np.delete(L_MD_set, np.searchsorted(L_MD_set,N_l_H_set))     # Remove protected MDs from set L_MD_set
+                    S_set_HD[HD_id] = N_l_H_set     # Add deployed HD to set S_set_HD
+                else:
+                    N_l_H_subset = N_l_H_set[:tao_upper]
+                    L_MD_set = np.delete(L_MD_set, np.searchsorted(L_MD_set,N_l_H_subset))     # Remove protected MDs from set L_MD_set
+                    S_set_HD[HD_id] = N_l_H_subset  # Add deployed HD to set S_set_HD
+                # print("L_MD_set", L_MD_set)
+            print("S_set_HD", S_set_HD)
 
+            print("Desti_XYZ", Desti_XYZ)
+
+        TARG_XYZS = stepToTarget(TARG_XYZS, Desti_XYZ, ARGS.control_freq_hz)
 
         H_STEP = .05
         R = .3
@@ -141,17 +245,23 @@ if __name__ == "__main__":
         obs, reward, done, info = env.step(action)
 
         # count cell scan by frame
-        for i in range(ARGS.num_drones):
-            cell_x, cell_y = obs[str(i)]["state"][0:2].astype(int)
+        for i in range(num_MD):
+            # print("obs[str(i)][state]", obs[str(i)]["state"][0:3].round(1))
+            cell_x, cell_y, height_z = obs[str(i)]["state"][0:3]
 
-            map_x_index = cell_x - map_x_index_const
-            map_y_index = cell_y - map_y_index_const
+            if height_z < 0.1:
+                print("Drone crashed, ID:", i)
+                print("cell_x, cell_y, height_z", cell_x, cell_y, height_z)
 
-            if 0 <= map_x_index and map_x_index <= map_size_with_border and 0 <= map_y_index and map_y_index <= map_size_with_border:
+            map_x_index = int(cell_x + 0.5 + map_border)
+            map_y_index = int(cell_y + 0.5 + map_border)
+
+            if 0 <= map_x_index and map_x_index < map_size_with_border and 0 <= map_y_index and map_y_index < map_size_with_border:
                 scan_map[map_x_index, map_y_index] += 0.01
             else:
-                print("cell_x, cell_y", i, cell_x, cell_y)
+                print("ID, cell_x, cell_y, height_z", i, cell_x, cell_y, height_z)
                 print("map_x_index_const, map_y_index_const", i, map_x_index, map_y_index)
+
 
 
         for i in range(ARGS.num_drones):
