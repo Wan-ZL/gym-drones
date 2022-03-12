@@ -8,6 +8,7 @@ class Mission_Drone:
         self.consume_rate = 0.01
         self.signal_level = 10  # range [1,10]
         self.maximum_signal_radius = 2
+        self.xyz_axis = (0, 0, 0)       # MD location ()
 
         self.compromised = False
         self.surveyed_time = 0
