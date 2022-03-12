@@ -2,11 +2,12 @@ import random
 import time
 import argparse
 import numpy as np
-from model_MD import Mission_Drone
-from model_HD import Honey_Drone
-from model_System import system_model
 
-from or_tool_test import MD_path_plan_main
+from model_System import system_model
+from model_Defender import defender_model
+from model_Attacker import attacker_model
+
+
 # from gym_pybullet_drones.envs.BaseAviary import BaseAviary, DroneModel, Physics
 from gym_pybullet_drones.envs.BaseAviary import DroneModel, Physics
 from gym_pybullet_drones.envs.CtrlAviary import CtrlAviary
@@ -32,36 +33,30 @@ def drones_distance(drone_x_location, drone_y_location):
 
 
 if __name__ == "__main__":
-    #### default parameters:
-    num_MD = 3  # number of MD (in index, MD first then HD)
-    num_HD = 1  # number of HD
-    maximum_signal_radius_HD = 3    # signal radius of HD
-    sg_HD = 5 # defense strategy, range [0, 10]
-    min_sg_HD = 1   # minimum signal level defender can choose
-    max_sg_HD = 10  # maximum signal level defender can choose
-    tao_lower = 1   # The lower bounds of the number of MDs that HDs can protect simultaneously
-    tao_upper = 3   # The upper bounds of the number of MDs that HDs can protect simultaneously
-
-
     # create model class
-    MD_set = set()
-    HD_set = set()
     system = system_model()
-    for index in range(num_MD):
-        MD_set.add(Mission_Drone(index))
+    defender = defender_model()
+    attacker = attacker_model()
+    MD_set = system.MD_set
+    HD_set = system.HD_set
 
-    for index in range(num_HD):
-        HD_set.add(Honey_Drone(index))
 
     # sample for obtain general parameter of MD and HD
-    HD_sample = Honey_Drone(-1)
-    MD_sample = Mission_Drone(-1)
+    HD_sample = system.sample_HD()
+    MD_sample = system.sample_MD()
 
+
+
+    #### default parameters:
+    num_MD = system.num_MD # number of MD (in index, MD first then HD)
+    num_HD = system.num_HD  # number of HD
+    maximum_signal_radius_HD = HD_sample.maximum_signal_radius    # signal radius of HD
+    sg_HD = defender.sg_HD # defense strategy, range [0, 10]
+    min_sg_HD = defender.min_sg_HD   # minimum signal level defender can choose
+    max_sg_HD = defender.max_sg_HD  # maximum signal level defender can choose
+    tao_lower = defender.tao_lower   # The lower bounds of the number of MDs that HDs can protect simultaneously
+    tao_upper = defender.tao_upper   # The upper bounds of the number of MDs that HDs can protect simultaneously
     target_map_size = system.target_map_size # size of surveillance area (map size)
-
-
-
-
 
 
     #### Define and parse (optional) arguments for the script ##
@@ -155,7 +150,7 @@ if __name__ == "__main__":
 
     # path planning for MD
     print("Calculating MD trajectory......")
-    drones_path_MD = MD_path_plan_main(num_MD, target_map_size)
+    drones_path_MD = defender.MD_trajectory(num_MD, target_map_size)
 
     # Z height for MD
     z_range_start_MD = 1
@@ -188,10 +183,13 @@ if __name__ == "__main__":
     #     Desti_XYZ[i] = drones_deploy_HD[i-num_MD]
 
 
-    while True:
+    while not system.is_mission_complete():
         # update destination for drones (every 500 frames)
         update_freq = 500
         if frameN % update_freq == 0:
+
+            # check if mission complete
+            system.check_mission_complete()
 
             # avoid HD crash when creating
             if frameN <= update_freq:
@@ -206,7 +204,7 @@ if __name__ == "__main__":
                 if drones_path_MD[i].shape[0] > 1:
                     drones_path_MD[i] = drones_path_MD[i][1:, :]
                 # print("Desti_XYZ: ", i, Desti_XYZ[i])
-            print("scan_map \n", scan_map.round(1))
+            print("map \n", scan_map.round(1))
 
             # for HD
             # Algorithm 1 in paper
@@ -239,7 +237,7 @@ if __name__ == "__main__":
                             N_l_H_new_set = temp_set
                             HD_pos_candidate = Desti_XYZ[MD_id]
                     Desti_XYZ[HD_id][:2] = HD_pos_candidate[:2]
-                    print("HD new position", HD_id, Desti_XYZ[HD_id])
+                    # print("HD new position", HD_id, Desti_XYZ[HD_id])
                     N_l_H_new_subset = N_l_H_new_set[:tao_upper]
                     L_MD_set = np.delete(L_MD_set, np.searchsorted(L_MD_set, N_l_H_new_subset))    # Remove protected MDs from set L_MD_set
                     S_set_HD[HD_id] = N_l_H_new_subset  # Add deployed HD to set S_set_HD
@@ -286,8 +284,10 @@ if __name__ == "__main__":
                 print("ID, cell_x, cell_y, height_z", i, cell_x, cell_y, height_z)
                 print("map_x_index_const, map_y_index_const", i, map_x_index, map_y_index)
 
+        # energy consumption of MD and HD
+        system.battery_consume()
 
-
+        # execute action
         for i in range(ARGS.num_drones):
             # print(i)
             # print("TARG_XYZS", TARG_XYZS[i])
@@ -312,6 +312,11 @@ if __name__ == "__main__":
         # if ARGS.gui:
         #     sync(frameN, START, env.TIMESTEP)
         frameN += 1
+
+    # Game End
+    system.print_MDs()
+    system.print_HDs()
+
 
 
 
