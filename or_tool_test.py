@@ -195,7 +195,7 @@ def MD_path_plan_main(num_MD, map_size):
     else:
         print('No solution found !')
 
-    # return generate_route_array(data, manager, routing, solution)
+    return generate_route_array(data, manager, routing, solution)
 
 
 if __name__ == '__main__':

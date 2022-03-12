@@ -2,8 +2,11 @@ import random
 import time
 import argparse
 import numpy as np
-from or_tool_test import MD_path_plan_main
+from model_MD import Mission_Drone
+from model_HD import Honey_Drone
+from model_System import system_model
 
+from or_tool_test import MD_path_plan_main
 # from gym_pybullet_drones.envs.BaseAviary import BaseAviary, DroneModel, Physics
 from gym_pybullet_drones.envs.BaseAviary import DroneModel, Physics
 from gym_pybullet_drones.envs.CtrlAviary import CtrlAviary
@@ -34,11 +37,31 @@ if __name__ == "__main__":
     num_HD = 1  # number of HD
     maximum_signal_radius_HD = 3    # signal radius of HD
     sg_HD = 5 # defense strategy, range [0, 10]
-    min_sg_HD = 0   # minimum signal level defender can choose
+    min_sg_HD = 1   # minimum signal level defender can choose
     max_sg_HD = 10  # maximum signal level defender can choose
     tao_lower = 1   # The lower bounds of the number of MDs that HDs can protect simultaneously
     tao_upper = 3   # The upper bounds of the number of MDs that HDs can protect simultaneously
-    target_map_size = 8 # size of surveillance area (map size)
+
+
+    # create model class
+    MD_set = set()
+    HD_set = set()
+    system = system_model()
+    for index in range(num_MD):
+        MD_set.add(Mission_Drone(index))
+
+    for index in range(num_HD):
+        HD_set.add(Honey_Drone(index))
+
+    # sample for obtain general parameter of MD and HD
+    HD_sample = Honey_Drone(-1)
+    MD_sample = Mission_Drone(-1)
+
+    target_map_size = system.target_map_size # size of surveillance area (map size)
+
+
+
+
 
 
     #### Define and parse (optional) arguments for the script ##
@@ -103,8 +126,8 @@ if __name__ == "__main__":
     frameN = 1
 
     # initial target scan area/map
-    map_x = 1   # original point of target area
-    map_y = 1
+    map_x = system.map_ori_x   # original point of target area
+    map_y = system.map_ori_y
 
     map_border = 0  # create a boarder to avoid 'index error'
     map_x_index_const = map_x - map_border
@@ -121,7 +144,7 @@ if __name__ == "__main__":
     TARG_XYZS = Desti_XYZ
     PRE_XYZ = Desti_XYZ
 
-    # path planning
+    # path planning (test)
     # drones_path_MD = {}
     # for id in range(ARGS.num_drones):
     #     x_temp_set = np.zeros(target_map_size).reshape(target_map_size,1) + map_x + id
@@ -189,7 +212,7 @@ if __name__ == "__main__":
             # Algorithm 1 in paper
             L_MD_set = np.arange(num_MD)
             L_HD_set = np.arange(num_MD, num_MD+num_HD)
-            max_radius = maximum_signal_radius_HD
+            max_radius = HD_sample.maximum_signal_radius
             p_H_r = (sg_HD * max_radius) / max_sg_HD # actual signal radius under given defense strategy sg_HD
             S_set_HD = {} # A set of HDs with assigned MDs
             for HD_id in L_HD_set:
@@ -258,6 +281,7 @@ if __name__ == "__main__":
 
             if 0 <= map_x_index and map_x_index < map_size_with_border and 0 <= map_y_index and map_y_index < map_size_with_border:
                 scan_map[map_x_index, map_y_index] += 0.01
+                system.update_scan(map_x_index, map_y_index, 0.01)
             else:
                 print("ID, cell_x, cell_y, height_z", i, cell_x, cell_y, height_z)
                 print("map_x_index_const, map_y_index_const", i, map_x_index, map_y_index)
