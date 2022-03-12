@@ -27,6 +27,8 @@ class system_model:
     def location_update(self):
 
 
+        pass
+
     def battery_consume(self):
         for MD in self.MD_set:
             MD.battery_update()

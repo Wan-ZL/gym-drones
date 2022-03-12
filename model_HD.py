@@ -7,6 +7,7 @@ class Honey_Drone:
         self.charging_rate = 0.1
         self.consume_rate = 0.005
         self.maximum_signal_radius = 3
+        self.xyz_axis = (0, 0, 0)  # HD location
 
         self.signal_level = 10  # range [1,10]
         self.protecting = []    # the MD (ID) protecting now
