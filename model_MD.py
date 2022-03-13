@@ -1,5 +1,6 @@
 class Mission_Drone:
     def __init__(self, ID):
+        self.type = "MD"
         self.ID = ID
         self.type = 'MD'
         self.battery = 100.0      # battery level
@@ -8,7 +9,8 @@ class Mission_Drone:
         self.consume_rate = 0.01
         self.signal_level = 10  # range [1,10]
         self.maximum_signal_radius = 2
-        self.xyz_axis = (0, 0, 0)       # MD location ()
+        self.xyz = [0, 0, 0]       # MD location (location of destination)
+        self.xyz_temp = self.xyz    # intermediate location to destination
 
         self.compromised = False
         self.surveyed_time = 0

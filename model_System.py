@@ -11,10 +11,12 @@ class system_model:
         self.scan_map = np.zeros((self.target_map_size,self.target_map_size))
         self.num_MD = 3  # number of MD (in index, MD first then HD)
         self.num_HD = 1  # number of HD
-        self.MD_set = set()
-        self.HD_set = set()
+        self.MD_dict = {}        # key is id, value is class detail
+        self.HD_dict = {}
         self.assign_MD()
         self.assign_HD()
+        self.MD_set = self.MD_dict.values()
+        self.HD_set = self.MD_dict.values()
 
     def print_MDs(self):
         for MD in self.MD_set:
@@ -24,7 +26,7 @@ class system_model:
         for HD in self.HD_set:
             print(vars(HD))
 
-    def location_update(self):
+    def location_backup_MD(self, ):
 
 
         pass
@@ -37,11 +39,11 @@ class system_model:
 
     def assign_MD(self):
         for index in range(self.num_MD):
-            self.MD_set.add(Mission_Drone(index))
+            self.MD_dict[index] = Mission_Drone(index)
 
     def assign_HD(self):
         for index in range(self.num_HD):
-            self.HD_set.add(Honey_Drone(index))
+            self.HD_dict[index] = Honey_Drone(index)
 
     def sample_MD(self):
         return Mission_Drone(-1)
