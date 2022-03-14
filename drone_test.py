@@ -21,13 +21,18 @@ from gym_pybullet_drones.utils.utils import sync, str2bool
 # Note: adjust debug camera target point by edit resetDebugVisualizerCamera in 'BaseAviary.py'
 # debug camera keymap, see: https://github.com/robotlearn/pyrobolearn/blob/master/docs/pybullet.md
 
-def stepToTarget(preXYZ: np.array, Desti_XYZ: np.array, control_freq_hz: int) -> list:
-    return_XYZ = (Desti_XYZ - preXYZ) / control_freq_hz + preXYZ
-    return return_XYZ
+# def stepToTarget(preXYZ: np.array, Desti_XYZ: np.array, control_freq_hz: int) -> list:
+#     return_XYZ = (Desti_XYZ - preXYZ) / control_freq_hz + preXYZ
+#     return return_XYZ
+def updateTempLoca(drone_set, control_freq_hz: int):
+    for drone in drone_set:
+        drone.xyz_temp = (drone.xyz - drone.xyz_temp) / control_freq_hz + drone.xyz_temp
+    # return_XYZ = (Desti_XYZ - preXYZ) / control_freq_hz + preXYZ
+    # return return_XYZ
 
 # distance between two drones. (Eq. \eqref(Eq: distance) in paper)
 def drones_distance(drone_x_location, drone_y_location):
-    distance_squre =  np.square(drone_x_location- drone_y_location)
+    distance_squre = np.square(drone_x_location - drone_y_location)
     return np.sqrt(np.sum(distance_squre))
 
 
@@ -35,8 +40,8 @@ def drones_distance(drone_x_location, drone_y_location):
 if __name__ == "__main__":
     # create model class
     system = system_model()
-    defender = defender_model()
-    attacker = attacker_model()
+    defender = defender_model(system)
+    attacker = attacker_model(system)
     MD_dict = system.MD_dict
     HD_dict = system.HD_dict
     MD_set = MD_dict.values()
@@ -136,11 +141,20 @@ if __name__ == "__main__":
     # index_const = int(map_size_with_border/2)
 
     # initial position for drones (MD+HD)
-    Desti_XYZ = INIT_XYZS
-    for i in range(ARGS.num_drones):
-        Desti_XYZ[i] = INIT_XYZS[i]
-    TARG_XYZS = Desti_XYZ
-    PRE_XYZ = Desti_XYZ
+    for MD in MD_set:
+        MD.assign_destination(INIT_XYZS[MD.ID])
+        # MD.xyz = INIT_XYZS[MD.ID]
+        MD.xyz_temp = MD.xyz
+    for HD in HD_set:
+        HD.assign_destination(INIT_XYZS[num_MD+HD.ID])
+        # HD.xyz = INIT_XYZS[num_MD+HD.ID]
+        HD.xyz_temp = HD.xyz
+
+    # Desti_XYZ = INIT_XYZS
+    # for i in range(ARGS.num_drones):
+    #     Desti_XYZ[i] = INIT_XYZS[i]
+    # TARG_XYZS = Desti_XYZ
+    # PRE_XYZ = Desti_XYZ
 
     # path planning (test)
     # drones_path_MD = {}
@@ -168,7 +182,7 @@ if __name__ == "__main__":
     # path planning for HD
     drones_deploy_HD = {}
     for HD in HD_set:
-        drones_deploy_HD[HD.ID] = np.ones(3) # this deployment only depends on MD's latest location
+        drones_deploy_HD[HD.ID] = np.zeros(3) # this deployment only depends on MD's latest location
 
     # Z height for HD
     z_range_start_HD = 2.2
@@ -193,11 +207,15 @@ if __name__ == "__main__":
             # check real time scan
             print("map \n", scan_map.round(1))
 
-            # for MD
+            # for MD update next destination
             for MD in MD_set:
-                MD.xyz = drones_path_MD[MD.ID][0]
+                MD.assign_destination(drones_path_MD[MD.ID][0])
+                # MD.xyz = drones_path_MD[MD.ID][0]
                 if drones_path_MD[MD.ID].shape[0] > 1:
                     drones_path_MD[MD.ID] = drones_path_MD[MD.ID][1:, :]
+                else:
+                    print("MD arrived:", MD.ID)
+                    MD.no_mission()
 
             # for i in range(num_MD):
             #     # print(drones_path_MD[i])
@@ -210,11 +228,12 @@ if __name__ == "__main__":
             # avoid HD crash when creating
             if frameN <= update_freq:
                 for HD in HD_set:
-                    HD.xyz = drones_deploy_HD[HD.ID]
+                    HD.assign_destination(drones_deploy_HD[HD.ID])
+                    # HD.xyz = drones_deploy_HD[HD.ID]
                 # for i in range(num_MD, num_MD + num_HD):
                 #     Desti_XYZ[i] = drones_deploy_HD[i - num_MD]
 
-            # for HD
+            # for HD update next destination
             # Algorithm 1 in paper
             L_MD_set = np.arange(num_MD)
             # L_HD_set = np.arange(num_MD, num_MD+num_HD)
@@ -247,7 +266,8 @@ if __name__ == "__main__":
                         if temp_set.size > N_l_H_new_set.size:  # set new position as candidate
                             N_l_H_new_set = temp_set
                             HD_pos_candidate = MD_dict[MD_id_candi].xyz
-                    HD_dict[HD_id].xyz[:2] = HD_pos_candidate[:2]
+                    HD_dict[HD_id].assign_destination_xy(HD_pos_candidate[:2])
+                    # HD_dict[HD_id].xyz[:2] = HD_pos_candidate[:2]
                     N_l_H_new_subset = N_l_H_new_set[:tao_upper]
                     L_MD_set = np.delete(L_MD_set, np.searchsorted(L_MD_set, N_l_H_new_subset))    # Remove protected MDs from set L_MD_set
                     S_set_HD[HD_id] = N_l_H_new_subset  # Add deployed HD to set S_set_HD
@@ -262,13 +282,16 @@ if __name__ == "__main__":
             print("S_set_HD", S_set_HD)
 
             # print("Desti_XYZ", Desti_XYZ)
-            for MD in MD_set:
-                Desti_XYZ[MD.ID] = MD.xyz
-            for HD in HD_set:
-                Desti_XYZ[HD.ID+num_MD] = HD.xyz
+            # for MD in MD_set:
+            #     Desti_XYZ[MD.ID] = MD.xyz
+            # for HD in HD_set:
+            #     Desti_XYZ[HD.ID+num_MD] = HD.xyz
 
 
-        TARG_XYZS = stepToTarget(TARG_XYZS, Desti_XYZ, ARGS.control_freq_hz)
+        # TARG_XYZS = stepToTarget(TARG_XYZS, Desti_XYZ, ARGS.control_freq_hz)
+        updateTempLoca(MD_set, ARGS.control_freq_hz)
+        updateTempLoca(HD_set, ARGS.control_freq_hz)
+
 
         H_STEP = .05
         R = .3
@@ -303,14 +326,18 @@ if __name__ == "__main__":
         system.battery_consume()
 
         # execute action
-        # for MD in MD_set:
-        #     action[str(MD.ID)], _, _ = ctrl[MD.ID].computeControlFromState(control_timestep=CTRL_EVERY_N_STEPS * env.TIMESTEP,
-        #                                                            state=obs[str(MD.ID)]["state"],
-        #                                                            target_pos=MD.xyz_temp)
-        for i in range(ARGS.num_drones):
-            action[str(i)], _, _ = ctrl[i].computeControlFromState(control_timestep=CTRL_EVERY_N_STEPS * env.TIMESTEP,
-                                                                   state=obs[str(i)]["state"],
-                                                                   target_pos=TARG_XYZS[i])
+        for MD in MD_set:
+            action[str(MD.ID)], _, _ = ctrl[MD.ID].computeControlFromState(control_timestep=CTRL_EVERY_N_STEPS * env.TIMESTEP,
+                                                                   state=obs[str(MD.ID)]["state"],
+                                                                   target_pos=MD.xyz_temp)
+        for HD in HD_set:
+            action[str(HD.ID+num_MD)], _, _ = ctrl[HD.ID+num_MD].computeControlFromState(control_timestep=CTRL_EVERY_N_STEPS * env.TIMESTEP,
+                                                                   state=obs[str(HD.ID+num_MD)]["state"],
+                                                                   target_pos=HD.xyz_temp)
+        # for i in range(ARGS.num_drones):
+        #     action[str(i)], _, _ = ctrl[i].computeControlFromState(control_timestep=CTRL_EVERY_N_STEPS * env.TIMESTEP,
+        #                                                            state=obs[str(i)]["state"],
+        #                                                            target_pos=TARG_XYZS[i])
             # print(i)
             # print("TARG_XYZS", TARG_XYZS[i])
             # print("drone pos:", obs[str(i)]["state"][0:3])

@@ -16,7 +16,7 @@ class system_model:
         self.assign_MD()
         self.assign_HD()
         self.MD_set = self.MD_dict.values()
-        self.HD_set = self.MD_dict.values()
+        self.HD_set = self.HD_dict.values()
 
     def print_MDs(self):
         for MD in self.MD_set:
@@ -26,7 +26,7 @@ class system_model:
         for HD in self.HD_set:
             print(vars(HD))
 
-    def location_backup_MD(self, ):
+    def location_backup_MD(self):
 
 
         pass
