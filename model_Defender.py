@@ -19,5 +19,6 @@ class defender_model:
 
     def create_trajectory(self):
         # TODO: create trajectory only for not scanned cells
+        return MD_path_plan_main(self.system.num_MD, self.system.target_map_size)
         pass
 

@@ -16,7 +16,6 @@ class Mission_Drone:
         self.maximum_signal_radius = 2
         self.xyz = np.zeros(3)      # MD location (location of destination)
         self.xyz_temp = self.xyz.copy()    # intermediate location to destination
-
         self.compromised = False
         self.surveyed_time = 0
         self.surveyed_cell = np.array([])     # cell ID goes here

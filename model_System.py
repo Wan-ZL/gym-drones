@@ -9,6 +9,7 @@ class system_model:
         self.map_ori_x = 1   # original point of target area
         self.map_ori_y = 1
         self.scan_map = np.zeros((self.target_map_size,self.target_map_size))
+        self.min_scan_requirement = 1
         self.num_MD = 3  # number of MD (in index, MD first then HD)
         self.num_HD = 1  # number of HD
         self.MD_dict = {}        # key is id, value is class detail
@@ -17,6 +18,9 @@ class system_model:
         self.assign_HD()
         self.MD_set = self.MD_dict.values()
         self.HD_set = self.HD_dict.values()
+
+    def not_scanned_map(self):
+        return self.scan_map >= self.min_scan_requirement
 
     def print_MDs(self):
         for MD in self.MD_set:
