@@ -157,27 +157,28 @@ if __name__ == "__main__":
     # PRE_XYZ = Desti_XYZ
 
     # path planning (test)
-    # drones_path_MD = {}
+    # MD_trajectory = {}
     # for id in range(ARGS.num_drones):
     #     x_temp_set = np.zeros(target_map_size).reshape(target_map_size,1) + map_x + id
     #     y_temp_set = np.arange(target_map_size).reshape(target_map_size,1) + map_y
     #     z_temp_set = np.random.uniform(2, 2, target_map_size).reshape(target_map_size,1)
-    #     drones_path_MD[id] = np.concatenate((x_temp_set, y_temp_set), axis = 1)
-    #     drones_path_MD[id] = np.concatenate((drones_path_MD[id], z_temp_set), axis=1)
+    #     MD_trajectory[id] = np.concatenate((x_temp_set, y_temp_set), axis = 1)
+    #     MD_trajectory[id] = np.concatenate((MD_trajectory[id], z_temp_set), axis=1)
 
     # path planning for MD
-    print("Calculating MD trajectory......")
-    drones_path_MD = defender.MD_trajectory(num_MD, target_map_size)
+    MD_trajectory = defender.MD_trajectory
+    # MD_trajectory = defender.MD_trajectory(num_MD, target_map_size)
+    # MD_trajectory = defender.create_trajectory()
 
     # Z height for MD
-    z_range_start_MD = 1
-    z_range_end_MD = 2
-    if num_MD == 1:
-        z_mutiplier = z_range_end_MD
-    else:
-        z_mutiplier = (z_range_end_MD - z_range_start_MD) / (num_MD - 1)
-    for id in range(num_MD):
-        drones_path_MD[id] = np.insert(drones_path_MD[id], 2, z_mutiplier * id + z_range_start_MD, axis=1)
+    # z_range_start_MD = 1
+    # z_range_end_MD = 2
+    # if num_MD == 1:
+    #     z_mutiplier = z_range_end_MD
+    # else:
+    #     z_mutiplier = (z_range_end_MD - z_range_start_MD) / (num_MD - 1)
+    # for id in range(num_MD):
+    #     MD_trajectory[id] = np.insert(MD_trajectory[id], 2, z_mutiplier * id + z_range_start_MD, axis=1)
 
     # path planning for HD
     drones_deploy_HD = {}
@@ -196,7 +197,7 @@ if __name__ == "__main__":
 
 
 
-    while not system.is_mission_complete():
+    while system.is_mission_Not_complete():
         # update destination for drones (every 500 frames)
         update_freq = 500
         if frameN % update_freq == 0:
@@ -204,24 +205,28 @@ if __name__ == "__main__":
             # check if mission complete
             system.check_mission_complete()
 
+            # path planning for MD
+            if defender.is_calc_trajectory():
+                MD_trajectory = defender.MD_trajectory
+
             # check real time scan
             print("map \n", scan_map.round(1))
 
             # for MD update next destination
             for MD in MD_set:
-                MD.assign_destination(drones_path_MD[MD.ID][0])
-                # MD.xyz = drones_path_MD[MD.ID][0]
-                if drones_path_MD[MD.ID].shape[0] > 1:
-                    drones_path_MD[MD.ID] = drones_path_MD[MD.ID][1:, :]
+                MD.assign_destination(MD_trajectory[MD.ID][0])
+                # MD.xyz = MD_trajectory[MD.ID][0]
+                if MD_trajectory[MD.ID].shape[0] > 1:
+                    MD_trajectory[MD.ID] = MD_trajectory[MD.ID][1:, :]
                 else:
                     print("MD arrived:", MD.ID)
                     MD.no_mission()
 
             # for i in range(num_MD):
-            #     # print(drones_path_MD[i])
-            #     Desti_XYZ[i] = drones_path_MD[i][0]
-            #     if drones_path_MD[i].shape[0] > 1:
-            #         drones_path_MD[i] = drones_path_MD[i][1:, :]
+            #     # print(MD_trajectory[i])
+            #     Desti_XYZ[i] = MD_trajectory[i][0]
+            #     if MD_trajectory[i].shape[0] > 1:
+            #         MD_trajectory[i] = MD_trajectory[i][1:, :]
                 # print("Desti_XYZ: ", i, Desti_XYZ[i])
 
 
@@ -363,8 +368,8 @@ if __name__ == "__main__":
         frameN += 1
 
     # Game End
-    system.print_MDs()
-    system.print_HDs()
+    # system.print_MDs()
+    # system.print_HDs()
 
 
 

@@ -4,12 +4,13 @@ from model_HD import Honey_Drone
 
 class system_model:
     def __init__(self):
-        self.mission_complete = False
+        self.mission_Not_complete = 2   # 2 means True, use 2 here to allow drone back to BaseStation in debug mode
         self.target_map_size = 4
         self.map_ori_x = 1   # original point of target area
         self.map_ori_y = 1
         self.scan_map = np.zeros((self.target_map_size,self.target_map_size))
         self.min_scan_requirement = 1
+        self.recalc_trajectory = True   # True: need recalculate trajectory
         self.num_MD = 3  # number of MD (in index, MD first then HD)
         self.num_HD = 1  # number of HD
         self.MD_dict = {}        # key is id, value is class detail
@@ -20,7 +21,7 @@ class system_model:
         self.HD_set = self.HD_dict.values()
 
     def not_scanned_map(self):
-        return self.scan_map >= self.min_scan_requirement
+        return self.scan_map < self.min_scan_requirement
 
     def print_MDs(self):
         for MD in self.MD_set:
@@ -37,9 +38,11 @@ class system_model:
 
     def battery_consume(self):
         for MD in self.MD_set:
-            MD.battery_update()
-        for HD in self.HD_set:
-            HD.battery_update()
+            if MD.battery_update():     # True means battery charging complete
+                self.recalc_trajectory = True
+        for HD in self.HD_set:          # True means battery charging complete
+            if HD.battery_update():
+                self.recalc_trajectory = True
 
     def assign_MD(self):
         for index in range(self.num_MD):
@@ -57,14 +60,16 @@ class system_model:
 
     def check_mission_complete(self):
         if np.all(self.scan_map > 1):
-            self.mission_complete = True
-            print("Mission Complete!! \n scanned map:")
-            print(self.scan_map)
-        return self.mission_complete
+            self.mission_Not_complete -= 1
+            print("Mission Complete!!")
+            print("scanned map:\n",self.scan_map)
+            self.print_MDs()
+            self.print_HDs()
+        return self.mission_Not_complete
 
     # this is a fast way to check for saving running time
-    def is_mission_complete(self):
-        return self.mission_complete
+    def is_mission_Not_complete(self):
+        return self.mission_Not_complete
 
     def update_scan(self, x_axis, y_axis, amount):
         x_axis = x_axis - self.map_ori_x

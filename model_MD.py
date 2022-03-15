@@ -5,7 +5,7 @@ class Mission_Drone:
         self.type = "MD"
         self.ID = ID
         self.type = 'MD'
-        self.battery_max = 10.0
+        self.battery_max = 100.0
         self.battery = self.battery_max  # battery level
         self.died = False           # drone died when battery goes to zero
         self.charging = False
@@ -20,7 +20,7 @@ class Mission_Drone:
         self.surveyed_time = 0
         self.surveyed_cell = np.array([])     # cell ID goes here
 
-    def battery_update(self):       # consume energy or charging
+    def battery_update(self):       # consume energy or charging (True means drone is ready (recalculate trajectory))
         if not self.charging and not self.compromised:
             if self.battery > 0:
                 self.battery -= self.consume_rate
@@ -31,7 +31,10 @@ class Mission_Drone:
                 self.battery += self.charging_rate
             else:                                       # battery full
                 self.charging = False
-                print(f"{self.type} {self.ID} is FULL")
+                print(f"{self.type} {self.ID} battery is FULL")
+                return True
+        return False
+
 
 
 

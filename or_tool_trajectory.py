@@ -7,7 +7,7 @@ import random
 import time
 
 
-def create_data_model(map_size, num_vehicles, depot):
+def create_data_model(map_size, num_vehicles, depot, not_scanned_map):
     """Stores the data for the problem."""
     data = {}
     data['num_vehicles'] = num_vehicles    # vehicle/drone number
@@ -22,16 +22,19 @@ def create_data_model(map_size, num_vehicles, depot):
     location_set = np.array([[baseStation_x, baseStation_y]])
     for x in range(baseStation_x+1, map_size+1):
         for y in range(baseStation_y+1, map_size+1):
-            location_set = np.append(location_set, [[x, y]], axis=0)
+            if not_scanned_map[x-1, y-1]:               # trajectory only consider cells not scanned
+                location_set = np.append(location_set, [[x, y]], axis=0)
     data['location_set'] = location_set
 
     distance_set = np.zeros((cell_number, cell_number))
+    # TODO: solve distance not exist problem when some cells are scanned (create path only depend on given cells)
     # print('shape', distance_set.shape)
     # print("distance_set", distance_set)
     i_index = 0
     for i_x, i_y in location_set:
         j_index = 0
         for j_x, j_y in location_set:
+            # if not_scanned_map[i_index, j_index]:  # trajectory only consider cells not scanned
             distance_set[i_index][j_index] = np.linalg.norm([i_x - j_x, i_y - j_y])
             j_index += 1
         i_index += 1
@@ -128,7 +131,7 @@ def generate_route_array(data, manager, routing, solution):
 
 
 
-def MD_path_plan_main(num_MD, map_size):
+def MD_path_plan_main(num_MD, map_size, not_scanned_map):
     """Entry point of the program."""
 
     # target_map_size = 5
@@ -136,7 +139,7 @@ def MD_path_plan_main(num_MD, map_size):
     depot = 0  # base station index
 
     # Instantiate the data problem.
-    data = create_data_model(map_size, num_vehicles, depot)
+    data = create_data_model(map_size, num_vehicles, depot, not_scanned_map)
 
     # Create the routing index manager.
     manager = pywrapcp.RoutingIndexManager(len(data['distance_matrix']), data['num_vehicles'], data['depot'])
@@ -201,6 +204,6 @@ def MD_path_plan_main(num_MD, map_size):
 if __name__ == '__main__':
     num_MD = 1
     map_size = 10
-    MD_path_plan_main(num_MD, map_size)
+    MD_path_plan_main(num_MD, map_size, np.ones((map_size,map_size), dtype=bool))
 
 
