@@ -4,10 +4,11 @@ from ortools.constraint_solver import pywrapcp
 import numpy as np
 import matplotlib.pyplot as plt
 import random
+import math
 import time
 
 
-def create_data_model(map_size, num_vehicles, depot, not_scanned_map):
+def create_data_model(map_size, locations_MD, num_vehicles, depot, not_scanned_map):
     """Stores the data for the problem."""
     data = {}
     data['num_vehicles'] = num_vehicles    # vehicle/drone number
@@ -17,58 +18,100 @@ def create_data_model(map_size, num_vehicles, depot, not_scanned_map):
     baseStation_x = 0
     baseStation_y = 0
     cell_number = map_size * map_size + 1  # including base station
+    map_x_start = baseStation_x+1
+    map_x_end = map_size+1
+    map_y_start = baseStation_y+1
+    map_y_end = map_size+1
 
     # distances
-    location_set = np.array([[baseStation_x, baseStation_y]])
-    for x in range(baseStation_x+1, map_size+1):
-        for y in range(baseStation_y+1, map_size+1):
-            if not_scanned_map[x-1, y-1]:               # trajectory only consider cells not scanned
-                location_set = np.append(location_set, [[x, y]], axis=0)
-    data['location_set'] = location_set
+    # In this test file, locations are tuple
+    location_set = [(baseStation_x, baseStation_y)]
+    for x in range(map_x_start, map_x_end):
+        for y in range(map_y_start, map_y_end):
+            # trajectory only consider cells not scanned, not_scanned_map index start from 0
+            if not_scanned_map[x-map_x_start, y-map_y_start]:
+                location_set.append((x, y))
+    # add drones location
+    for location in locations_MD:
+        if location not in location_set:
+            location_set.append(location)
+    data['locations'] = location_set
 
-    distance_set = np.zeros((cell_number, cell_number))
-    # TODO: solve distance not exist problem when some cells are scanned (create path only depend on given cells)
-    # print('shape', distance_set.shape)
-    # print("distance_set", distance_set)
-    i_index = 0
-    for i_x, i_y in location_set:
-        j_index = 0
-        for j_x, j_y in location_set:
-            # if not_scanned_map[i_index, j_index]:  # trajectory only consider cells not scanned
-            distance_set[i_index][j_index] = np.linalg.norm([i_x - j_x, i_y - j_y])
-            j_index += 1
-        i_index += 1
+    # data['distance_matrix'], data['node2position'], data['position2node'] = compute_euclidean_distance_matrix(data['locations'],)
+    # # link position xy with node index
+    # data['position2node'] = {}
+    # data['node2position'] = {}
+    # for from_counter, from_node in enumerate(data['locations']):
+    #     data['node2position'][from_counter] = from_node
+    #     data['position2node'][from_node] = from_counter
 
-    # since the libarary will convert float to integer, Multiple 100 here for keeping two decimals.
-    data['distance_matrix'] = distance_set * 100
+    # calculate distance
+    # distance_set = np.zeros((cell_number, cell_number))
+    # # print('shape', distance_set.shape)
+    # # print("distance_set", distance_set)
+    # i_index = 0
+    # for i_x, i_y in location_set:
+    #     j_index = 0
+    #     for j_x, j_y in location_set:
+    #         # if not_scanned_map[i_index, j_index]:  # trajectory only consider cells not scanned
+    #         distance_set[i_index][j_index] = np.linalg.norm([i_x - j_x, i_y - j_y])
+    #         j_index += 1
+    #     i_index += 1
+    #
+    # # since the libarary will convert float to integer, Multiple 100 here for keeping two decimals.
+    # data['distance_matrix'] = distance_set * 100
     return data
 
+def compute_euclidean_distance_matrix(locations, variable_precision):
+    """Creates callback to return distance between points."""
+    distances = {}
+    node2position = {}
+    position2node = {}
+    for from_counter, from_node in enumerate(locations):
+        distances[from_counter] = {}
+        node2position[from_counter] = from_node
+        position2node[from_node] = from_counter
+        for to_counter, to_node in enumerate(locations):
+            if from_counter == to_counter:
+                distances[from_counter][to_counter] = 0
+            else:
+                # Euclidean distance
+                distances[from_counter][to_counter] = (int(
+                    math.hypot((from_node[0] - to_node[0]),
+                               (from_node[1] - to_node[1]))*variable_precision))   # multiple variable_precision for keeping two decimals
+    return distances, node2position, position2node
 
 
-def print_solution(data, manager, routing, solution):
+
+def print_solution(data, manager, routing, solution, variable_precision, node2position):
     """Prints solution on console."""
-    print(f'Objective: {solution.ObjectiveValue()/100}')
+    print(f'Objective: {solution.ObjectiveValue()/variable_precision}')
     max_route_distance = 0
     for vehicle_id in range(data['num_vehicles']):
         index = routing.Start(vehicle_id)
         plan_output = 'Route for vehicle {}:\n'.format(vehicle_id)
         route_distance = 0
+        previous_index = index
         while not routing.IsEnd(index):
-            plan_output += ' {} -> '.format(manager.IndexToNode(index))
+            node = manager.IndexToNode(index)
+            plan_output += f' {node} {node2position[node]} -> '
             previous_index = index
             index = solution.Value(routing.NextVar(index))
             route_distance += routing.GetArcCostForVehicle(
                 previous_index, index, vehicle_id)
             # print("distance", manager.IndexToNode(index), manager.IndexToNode(previous_index), data['distance_matrix'][manager.IndexToNode(index)][manager.IndexToNode(previous_index)])
-        plan_output += '{}\n'.format(manager.IndexToNode(index))
-        plan_output += 'Distance of the route: {}m\n'.format(route_distance/100)
+        node = manager.IndexToNode(index)
+        plan_output += f' {node} {node2position[node]}\n'
+        route_distance += routing.GetArcCostForVehicle(
+            previous_index, index, vehicle_id)
+        plan_output += 'Distance of the route: {}m\n'.format(route_distance/variable_precision)
         print(plan_output)
         max_route_distance = max(route_distance, max_route_distance)
-    print('Maximum of the route distances: {}m'.format(max_route_distance/100))
+    print('Maximum of the route distances: {}m\n'.format(max_route_distance/variable_precision))
 
 
 def draw_map(data, manager, routing, solution):
-    location_set = data['location_set']
+    location_set = data['locations']
     map_size = data['target_map_size']
     colors_order = plt.rcParams['axes.prop_cycle'].by_key()['color']
     for vehicle_id in range(data['num_vehicles']):
@@ -111,7 +154,7 @@ def draw_map(data, manager, routing, solution):
 
 
 def generate_route_array(data, manager, routing, solution):
-    location_set = data['location_set']
+    location_set = data['locations']
     route_array = {}
     for vehicle_id in range(data['num_vehicles']):
         index = routing.Start(vehicle_id)
@@ -131,18 +174,30 @@ def generate_route_array(data, manager, routing, solution):
 
 
 
-def MD_path_plan_main(num_MD, map_size, not_scanned_map):
+def MD_path_plan_main(locations_MD, map_size, not_scanned_map):
     """Entry point of the program."""
-
+    print("locations_MD", locations_MD)
     # target_map_size = 5
-    num_vehicles = num_MD  # vehicle/drone number
+    num_vehicles = len(locations_MD)  # vehicle/drone number
     depot = 0  # base station index
+    variable_precision = 100 # 100 means keep two decimal
 
     # Instantiate the data problem.
-    data = create_data_model(map_size, num_vehicles, depot, not_scanned_map)
+    data = create_data_model(map_size, locations_MD, num_vehicles, depot, not_scanned_map)
+
+    # create distance for all nodes.
+    distance_matrix, node2position, position2node = compute_euclidean_distance_matrix(data['locations'], variable_precision)
+    # start & end location
+    data['starts'] = []
+    for x, y in locations_MD:
+        posi_index = position2node[(x,y)]
+
+        data['starts'].append(posi_index)
+
+    data['ends'] = [depot] * num_vehicles
 
     # Create the routing index manager.
-    manager = pywrapcp.RoutingIndexManager(len(data['distance_matrix']), data['num_vehicles'], data['depot'])
+    manager = pywrapcp.RoutingIndexManager(len(data['locations']), data['num_vehicles'], data['starts'], data['ends'])
 
     # Create Routing Model.
     routing = pywrapcp.RoutingModel(manager)
@@ -153,7 +208,8 @@ def MD_path_plan_main(num_MD, map_size, not_scanned_map):
         # Convert from routing variable Index to distance matrix NodeIndex.
         from_node = manager.IndexToNode(from_index)
         to_node = manager.IndexToNode(to_index)
-        return data['distance_matrix'][from_node][to_node]
+        return distance_matrix[from_node][to_node]
+        # return data['distance_matrix'][from_node][to_node]
 
     transit_callback_index = routing.RegisterTransitCallback(distance_callback)
 
@@ -165,11 +221,11 @@ def MD_path_plan_main(num_MD, map_size, not_scanned_map):
     routing.AddDimension(
         transit_callback_index,
         0,  # no slack
-        map_size*map_size*100*100,  # vehicle maximum travel distance
+        (map_size*variable_precision)*(map_size*variable_precision),  # vehicle maximum travel distance
         True,  # start cumul to zero
         dimension_name)
     distance_dimension = routing.GetDimensionOrDie(dimension_name)
-    distance_dimension.SetGlobalSpanCostCoefficient(100)
+    distance_dimension.SetGlobalSpanCostCoefficient(map_size*variable_precision)
 
     # Setting first solution heuristic.
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
@@ -193,7 +249,7 @@ def MD_path_plan_main(num_MD, map_size, not_scanned_map):
 
     # Print solution on console.
     if solution:
-        print_solution(data, manager, routing, solution)
+        print_solution(data, manager, routing, solution, variable_precision, node2position)
         draw_map(data, manager, routing, solution)
     else:
         print('No solution found !')
@@ -202,8 +258,14 @@ def MD_path_plan_main(num_MD, map_size, not_scanned_map):
 
 
 if __name__ == '__main__':
-    num_MD = 1
-    map_size = 10
-    MD_path_plan_main(num_MD, map_size, np.ones((map_size,map_size), dtype=bool))
+    num_MD = 3
+    locations_MD = []
+    for i in range(num_MD):
+        locations_MD.append((1,0))
+    map_size = 6
+    not_scanned_map = np.ones((map_size,map_size), dtype=bool)
+    not_scanned_map[0,5] = False
+    not_scanned_map[5, 0] = False
+    MD_path_plan_main(locations_MD, map_size, not_scanned_map)
 
 

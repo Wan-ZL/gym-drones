@@ -26,6 +26,8 @@ from gym_pybullet_drones.utils.utils import sync, str2bool
 #     return return_XYZ
 def updateTempLoca(drone_set, control_freq_hz: int):
     for drone in drone_set:
+        if drone.compromised:
+            continue
         drone.xyz_temp = (drone.xyz - drone.xyz_temp) / control_freq_hz + drone.xyz_temp
     # return_XYZ = (Desti_XYZ - preXYZ) / control_freq_hz + preXYZ
     # return return_XYZ
@@ -199,7 +201,7 @@ if __name__ == "__main__":
 
     while system.is_mission_Not_complete():
         # update destination for drones (every 500 frames)
-        update_freq = 500
+        update_freq = system.update_freq
         if frameN % update_freq == 0:
 
             # check if mission complete
@@ -214,6 +216,8 @@ if __name__ == "__main__":
 
             # for MD update next destination
             for MD in MD_set:
+                if MD.compromised:
+                    continue
                 MD.assign_destination(MD_trajectory[MD.ID][0])
                 # MD.xyz = MD_trajectory[MD.ID][0]
                 if MD_trajectory[MD.ID].shape[0] > 1:
@@ -240,7 +244,11 @@ if __name__ == "__main__":
 
             # for HD update next destination
             # Algorithm 1 in paper
-            L_MD_set = np.arange(num_MD)
+            temp_MD_set = []
+            for MD in MD_set:
+                if not MD.compromised:
+                    temp_MD_set.append(MD.ID)
+            L_MD_set = np.array(temp_MD_set)
             # L_HD_set = np.arange(num_MD, num_MD+num_HD)
             L_HD_set = np.arange(num_HD)
             max_radius = HD_sample.maximum_signal_radius
@@ -309,29 +317,38 @@ if __name__ == "__main__":
         obs, reward, done, info = env.step(action)
 
         # count cell scan by frame
-        for i in range(num_MD):
-            # print("obs[str(i)][state]", obs[str(i)]["state"][0:3].round(1))
-            cell_x, cell_y, height_z = obs[str(i)]["state"][0:3]
+        # for MD in MD_set:
+        #     if MD.compromised:
+        #         continue
+        # # for i in range(num_MD):
+        #     # print("obs[str(i)][state]", obs[str(i)]["state"][0:3].round(1))
+        #     cell_x, cell_y, height_z = obs[str(MD.ID)]["state"][0:3]
+        #
+        #     if height_z < 0.1:
+        #         MD.compromised = True
+        #         print("Drone crashed, ID:", MD.ID)
+        #         print("cell_x, cell_y, height_z", cell_x, cell_y, height_z)
+        #
+        #     map_x_index = int(cell_x + 0.5 + map_border)
+        #     map_y_index = int(cell_y + 0.5 + map_border)
+        #
+        #     if 0 <= map_x_index and map_x_index < map_size_with_border and 0 <= map_y_index and map_y_index < map_size_with_border:
+        #         scan_map[map_x_index, map_y_index] += 0.01
+        #         system.update_scan(map_x_index, map_y_index, 0.01)
+        #     else:
+        #         print("ID, cell_x, cell_y, height_z", MD.ID, cell_x, cell_y, height_z)
+        #         print("map_x_index_const, map_y_index_const", MD.ID, map_x_index, map_y_index)
 
-            if height_z < 0.1:
-                print("Drone crashed, ID:", i)
-                print("cell_x, cell_y, height_z", cell_x, cell_y, height_z)
-
-            map_x_index = int(cell_x + 0.5 + map_border)
-            map_y_index = int(cell_y + 0.5 + map_border)
-
-            if 0 <= map_x_index and map_x_index < map_size_with_border and 0 <= map_y_index and map_y_index < map_size_with_border:
-                scan_map[map_x_index, map_y_index] += 0.01
-                system.update_scan(map_x_index, map_y_index, 0.01)
-            else:
-                print("ID, cell_x, cell_y, height_z", i, cell_x, cell_y, height_z)
-                print("map_x_index_const, map_y_index_const", i, map_x_index, map_y_index)
+        # scan count, and check if compromised
+        system.MD_environment_interaction(obs, scan_map)
 
         # energy consumption of MD and HD
         system.battery_consume()
 
         # execute action
         for MD in MD_set:
+            if MD.compromised:
+                continue
             action[str(MD.ID)], _, _ = ctrl[MD.ID].computeControlFromState(control_timestep=CTRL_EVERY_N_STEPS * env.TIMESTEP,
                                                                    state=obs[str(MD.ID)]["state"],
                                                                    target_pos=MD.xyz_temp)

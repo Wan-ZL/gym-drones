@@ -1,17 +1,17 @@
 import numpy as np
 
 class Mission_Drone:
-    def __init__(self, ID):
+    def __init__(self, ID, update_freq):
         self.type = "MD"
         self.ID = ID
         self.type = 'MD'
-        self.battery_max = 100.0
+        self.battery_max = 50.0
         self.battery = self.battery_max  # battery level
         self.died = False           # drone died when battery goes to zero
         self.charging = False
-        self.charging_rate = 0.1
+        self.charging_rate = 0.02
         self.consume_rate = 0.01
-        self.low_battery_thres = 0.1
+        self.low_battery_thres = update_freq * self.consume_rate + 0.1  # this value is based on the consumption in one round
         self.signal_level = 10  # range [1,10]
         self.maximum_signal_radius = 2
         self.xyz = np.zeros(3)      # MD location (location of destination)

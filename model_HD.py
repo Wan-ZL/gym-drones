@@ -1,7 +1,7 @@
 import numpy as np
 
 class Honey_Drone:
-    def __init__(self, ID):
+    def __init__(self, ID, update_freq):
         self.type = "HD"
         self.ID = ID
         self.type = "HD"
@@ -9,13 +9,14 @@ class Honey_Drone:
         self.battery = self.battery_max  # battery level
         self.died = False               # drone died when battery goes to zero
         self.charging = False
-        self.charging_rate = 0.1
+        self.charging_rate = 0.01
         self.consume_rate = 0.005
-        self.low_battery_thres = 0.1
+        self.low_battery_thres = update_freq * self.consume_rate + 0.1  # this value is based on the consumption in one round
         self.maximum_signal_radius = 3
         self.xyz = np.zeros(3)       # HD location (location of destination)
         self.xyz_temp = self.xyz.copy()
         self.signal_level = 10      # range [1,10]
+        self.compromised = False
         self.protecting = np.array([])        # the MD (ID) protecting now
 
     def battery_update(self):       # consume energy or charging
