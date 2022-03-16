@@ -152,18 +152,18 @@ def draw_map(data, manager, routing, solution):
 
 
 
-
-def generate_route_array(data, manager, routing, solution):
+# In some case, alive drone indexs are 1,3,6. Use 'indexs_MD' for assign accurate index name
+def generate_route_array(data, manager, routing, solution, indexs_MD):
     location_set = data['locations']
     route_array = {}
     for vehicle_id in range(data['num_vehicles']):
         index = routing.Start(vehicle_id)
-        route_array[vehicle_id] = np.array([location_set[manager.IndexToNode(index)]]).astype(float)
+        route_array[indexs_MD[vehicle_id]] = np.array([location_set[manager.IndexToNode(index)]]).astype(float)
         while not routing.IsEnd(index):
             # print("location_set[manager.IndexToNode(index)]", location_set[manager.IndexToNode(index)])
             # print("route_array[vehicle_id]", route_array[vehicle_id])
             index = solution.Value(routing.NextVar(index))
-            route_array[vehicle_id] = np.concatenate((route_array[vehicle_id],[location_set[manager.IndexToNode(index)]]), axis=0)
+            route_array[indexs_MD[vehicle_id]] = np.concatenate((route_array[indexs_MD[vehicle_id]],[location_set[manager.IndexToNode(index)]]), axis=0)
 
 
         # route_array[vehicle_id] = route_array[vehicle_id][1:]
@@ -174,7 +174,7 @@ def generate_route_array(data, manager, routing, solution):
 
 
 
-def MD_path_plan_main(locations_MD, map_size, not_scanned_map):
+def MD_path_plan_main(indexs_MD, locations_MD, map_size, not_scanned_map):
     """Entry point of the program."""
     print("locations_MD", locations_MD)
     # target_map_size = 5
@@ -254,11 +254,13 @@ def MD_path_plan_main(locations_MD, map_size, not_scanned_map):
     else:
         print('No solution found !')
 
-    return generate_route_array(data, manager, routing, solution)
+    return generate_route_array(data, manager, routing, solution, indexs_MD)
 
 
 if __name__ == '__main__':
     num_MD = 3
+    index_MD = range(num_MD)
+    index_MD = [1,3,6]
     locations_MD = []
     for i in range(num_MD):
         locations_MD.append((1,0))
@@ -266,6 +268,6 @@ if __name__ == '__main__':
     not_scanned_map = np.ones((map_size,map_size), dtype=bool)
     not_scanned_map[0,5] = False
     not_scanned_map[5, 0] = False
-    MD_path_plan_main(locations_MD, map_size, not_scanned_map)
+    MD_path_plan_main(index_MD, locations_MD, map_size, not_scanned_map)
 
 

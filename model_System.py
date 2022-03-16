@@ -5,8 +5,9 @@ from model_HD import Honey_Drone
 class system_model:
     def __init__(self):
         self.update_freq = 500  # environment frame per round
-        self.mission_Not_complete = 2   # 2 means True, use 2 here to allow drone back to BaseStation in debug mode
-        self.mission_max_status = self.mission_Not_complete
+        self.mission_Not_end = 2   # 2 means True, use 2 here to allow drone back to BaseStation in debug mode
+        self.mission_success = False
+        self.mission_max_status = self.mission_Not_end
         self.target_map_size = 6
         self.map_ori_x = 1   # original point of target area
         self.map_ori_y = 1
@@ -97,19 +98,31 @@ class system_model:
         return Honey_Drone(-1, self.update_freq)
 
     def check_mission_complete(self):
+        # check if mission can end
         if np.all(self.scan_map > 1):
-            self.mission_Not_complete -= 1
-            print("Mission Complete!!")
-            print("scanned map:\n",self.scan_map)
-            self.print_MDs()
-            self.print_HDs()
+            self.mission_Not_end -= 1
+            self.mission_success = True
         else:
             self.print_drones_battery()
-        return self.mission_Not_complete
+
+        # check if mission end successfully
+        if not self.mission_Not_end:
+            if self.mission_success:
+                print("Mission Complete!!")
+                print("scanned map:\n", self.scan_map)
+                self.print_MDs()
+                self.print_HDs()
+            else:
+                print("Mission Fail :(")
+                print("scanned map:\n", self.scan_map)
+                self.print_MDs()
+                self.print_HDs()
+
+        return self.mission_Not_end
 
     # this is a fast way to check for saving running time
-    def is_mission_Not_complete(self):
-        return self.mission_Not_complete
+    def is_mission_Not_end(self):
+        return self.mission_Not_end
 
     def update_scan(self, x_axis, y_axis, amount):
         x_axis = x_axis - self.map_ori_x

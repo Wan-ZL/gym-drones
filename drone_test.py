@@ -199,7 +199,7 @@ if __name__ == "__main__":
 
 
 
-    while system.is_mission_Not_complete():
+    while system.is_mission_Not_end():
         # update destination for drones (every 500 frames)
         update_freq = system.update_freq
         if frameN % update_freq == 0:

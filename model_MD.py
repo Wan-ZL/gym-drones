@@ -5,7 +5,7 @@ class Mission_Drone:
         self.type = "MD"
         self.ID = ID
         self.type = 'MD'
-        self.battery_max = 50.0
+        self.battery_max = 100.0
         self.battery = self.battery_max  # battery level
         self.died = False           # drone died when battery goes to zero
         self.charging = False
