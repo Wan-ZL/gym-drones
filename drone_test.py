@@ -244,6 +244,7 @@ if __name__ == "__main__":
 
             # for HD update next destination
             # Algorithm 1 in paper
+            # TODO: solve problem, only support one HD now.
             temp_MD_set = []
             for MD in MD_set:
                 if not MD.compromised:

@@ -16,7 +16,7 @@ class Drone:
         # self.low_battery_thres = self.update_freq * self.consume_rate + 0.1  # this value is based on the consumption in one round
 
     # this value is based on the consumption in one round
-    # @property make this function as variable so '()' is not required when calling it
+    # @property make this function as variable so '()' is not required when calling it (same as Getter in Java)
     @property
     def low_battery_thres(self):
         return self.update_freq * self.consume_rate + 0.1

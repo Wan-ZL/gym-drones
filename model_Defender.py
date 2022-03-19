@@ -1,11 +1,11 @@
 from or_tool_trajectory import MD_path_plan_main
 # from or_tools_test import MD_path_plan_main
+from model_player import player_model
 import numpy as np
 
-class defender_model:
+class defender_model(player_model):
     def __init__(self, system):
-        self.system = system        # save the pointer to system class
-        self.xyz_axis = [0,0,0]     # Regional Leader Drone location
+        player_model.__init__(self, system)
         self.sg_HD = 5 #     defense strategy, range [0, 10]
         self.min_sg_HD = 1  # minimum signal level defender can choose
         self.max_sg_HD = 10  # maximum signal level defender can choose
@@ -58,8 +58,6 @@ class defender_model:
         # for id in range(self.system.num_MD):
         #     self.MD_trajectory[id] = np.insert(self.MD_trajectory[id], 2, z_mutiplier * id + self.z_range_start_MD, axis=1)
 
-    def update_location(self, x_axis, y_axis, z_axis):
-        self.xyz_axis = (x_axis, y_axis, z_axis)
 
     # def MD_trajectory(self, num_MD, target_map_size):
     #     return MD_path_plan_main(num_MD, target_map_size)
