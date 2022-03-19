@@ -5,20 +5,13 @@ class Honey_Drone(Drone):
     def __init__(self, ID, update_freq):
         Drone.__init__(self, ID, update_freq)
         self.type = "HD"
-        # self.ID = ID
         self.type = "HD"
         self.battery_max = 100.0
         self.battery = self.battery_max  # battery level
-        # self.died = False               # drone died when battery goes to zero
-        # self.charging = False
         self.charging_rate = 0.01
         self.consume_rate = 0.005
-        self.low_battery_thres = self.update_freq * self.consume_rate + 0.1  # this value is based on the consumption in one round
         self.maximum_signal_radius = 3
-        # self.xyz = np.zeros(3)       # HD location (location of destination)
-        # self.xyz_temp = self.xyz.copy()
         self.signal_level = 10      # range [1,10]
-        # self.compromised = False
         self.protecting = np.array([])        # the MD (ID) protecting now
 
     def battery_update(self):       # consume energy or charging
@@ -33,14 +26,6 @@ class Honey_Drone(Drone):
             else:                                       # battery full
                 self.charging = False
                 print(f"{self.type} {self.ID} is FULL")
-
-    # def no_mission(self):
-    #     if np.array_equal(self.xyz[:2], np.zeros(2)):
-    #         self.charging = True
-
-    # def go_charging(self):
-    #     self.xyz[:2] = np.zeros(2)
-    #     self.charging = True
 
     def assign_destination(self, xyz_destination):
         if self.battery < self.low_battery_thres:   # low battery go charging

@@ -8,7 +8,7 @@ class system_model:
         self.mission_Not_end = 2   # 2 means True, use 2 here to allow drone back to BaseStation in debug mode
         self.mission_success = False
         self.mission_max_status = self.mission_Not_end
-        self.target_map_size = 3
+        self.target_map_size = 4
         self.map_ori_x = 1   # original point of target area
         self.map_ori_y = 1
         self.scan_map = np.zeros((self.target_map_size,self.target_map_size))
