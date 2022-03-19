@@ -8,7 +8,7 @@ class system_model:
         self.mission_Not_end = 2   # 2 means True, use 2 here to allow drone back to BaseStation in debug mode
         self.mission_success = False
         self.mission_max_status = self.mission_Not_end
-        self.target_map_size = 6
+        self.target_map_size = 3
         self.map_ori_x = 1   # original point of target area
         self.map_ori_y = 1
         self.scan_map = np.zeros((self.target_map_size,self.target_map_size))
@@ -36,7 +36,7 @@ class system_model:
             if height_z < 0.1:
                 MD.compromised = True
                 self.recalc_trajectory = True       # when a MD offline, recalculate trajectory
-                print("Drone crashed, ID:", MD.ID)
+                print("\n====Drone crashed====, ID:", MD.ID,"\n")
                 print("cell_x, cell_y, height_z", cell_x, cell_y, height_z)
 
             map_x_index = int(cell_x + 0.5)
@@ -56,7 +56,7 @@ class system_model:
 
     def print_MDs(self):
         for MD in self.MD_set:
-            print(vars(MD))
+            print(MD)
 
     def print_HDs(self):
         for HD in self.HD_set:

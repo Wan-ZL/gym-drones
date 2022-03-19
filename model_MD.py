@@ -1,22 +1,24 @@
 import numpy as np
+from model_Drone import Drone
 
-class Mission_Drone:
+class Mission_Drone(Drone):
     def __init__(self, ID, update_freq):
+        Drone.__init__(self, ID, update_freq)
         self.type = "MD"
-        self.ID = ID
+        # self.ID = ID
         self.type = 'MD'
         self.battery_max = 100.0
         self.battery = self.battery_max  # battery level
-        self.died = False           # drone died when battery goes to zero
-        self.charging = False
+        # self.died = False           # drone died when battery goes to zero
+        # self.charging = False
         self.charging_rate = 0.02
         self.consume_rate = 0.01
-        self.low_battery_thres = update_freq * self.consume_rate + 0.1  # this value is based on the consumption in one round
+        self.low_battery_thres = self.update_freq * self.consume_rate + 0.1  # this value is based on the consumption in one round
         self.signal_level = 10  # range [1,10]
         self.maximum_signal_radius = 2
-        self.xyz = np.zeros(3)      # MD location (location of destination)
-        self.xyz_temp = self.xyz.copy()    # intermediate location to destination
-        self.compromised = False
+        # self.xyz = np.zeros(3)      # MD location (location of destination)
+        # self.xyz_temp = self.xyz.copy()    # intermediate location to destination
+        # self.compromised = False
         self.surveyed_time = 0
         self.surveyed_cell = np.array([])     # cell ID goes here
 
@@ -38,13 +40,13 @@ class Mission_Drone:
 
 
 
-    def no_mission(self):
-        if np.array_equal(self.xyz[:2], np.zeros(2)):
-            self.charging = True
+    # def no_mission(self):
+    #     if np.array_equal(self.xyz[:2], np.zeros(2)):
+    #         self.charging = True
 
-    def go_charging(self):
-        self.xyz[:2] = np.zeros(2)
-        self.charging = True
+    # def go_charging(self):
+    #     self.xyz[:2] = np.zeros(2)
+    #     self.charging = True
 
     def assign_destination(self, xyz_destination):
         if self.battery < self.low_battery_thres:   # low battery go charging

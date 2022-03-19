@@ -176,7 +176,7 @@ def generate_route_array(data, manager, routing, solution, indexs_MD):
 
 def MD_path_plan_main(indexs_MD, locations_MD, map_size, not_scanned_map):
     """Entry point of the program."""
-    print("locations_MD", locations_MD)
+    # print("locations_MD", locations_MD)
     # target_map_size = 5
     num_vehicles = len(locations_MD)  # vehicle/drone number
     depot = 0  # base station index

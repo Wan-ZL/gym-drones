@@ -36,10 +36,9 @@ class defender_model:
         for MD in self.system.MD_set:
             if MD.compromised:
                 continue
-            print("before", self.MD_trajectory[MD.ID])
+
             self.MD_trajectory[MD.ID] = np.delete(self.MD_trajectory[MD.ID], 0, 0)
             # self.MD_trajectory[MD.ID] = self.MD_trajectory[MD.ID][1:]
-            print("after", self.MD_trajectory[MD.ID])
 
         # for id in range(self.system.num_MD):
         #     self.MD_trajectory[id] = self.MD_trajectory[id][1:]
