@@ -3,6 +3,7 @@ from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 import random
 import math
 import time
@@ -111,9 +112,27 @@ def print_solution(data, manager, routing, solution, variable_precision, node2po
 
 
 def draw_map(data, manager, routing, solution):
+    fig, ax = plt.subplots()
     location_set = data['locations']
     map_size = data['target_map_size']
     colors_order = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
+    # draw grid
+    plt.plot([0.5, 0.5], [-0.5, map_size + 0.5], linewidth=1, color='gray', zorder=0)
+    plt.plot([-0.5, map_size + 0.5], [0.5, 0.5], linewidth=1, color='gray', zorder=0)
+    for i in range(1,map_size):
+        plt.plot([i+0.5, i+0.5], [0.5, map_size+0.5], linewidth=0.5, color='gray', zorder=0)
+        plt.plot([0.5, map_size + 0.5], [i + 0.5, i + 0.5], linewidth=0.5, color='gray', zorder=0)
+        # plt.axvline(x=i + 0.5, linewidth=0.5, color='gray', zorder=0)
+        # plt.axhline(y=i + 0.5, linewidth=0.5, color='gray', zorder=0)
+
+    # draw gray to target area               # draw this first to make it on lowest layer.
+    ax.add_patch(Rectangle((-0.5, -0.5), 1, 1, color='0.95', zorder=0))
+    for i in range(map_size):
+        for j in range(map_size):
+            ax.add_patch(Rectangle((i + 0.5, j + 0.5), 1, 1, color='0.95', zorder=0))
+
+
     for vehicle_id in range(data['num_vehicles']):
         # print("vehicle_id", vehicle_id)
         # color = (random.random(), random.random(), random.random())
@@ -141,15 +160,11 @@ def draw_map(data, manager, routing, solution):
         # print(solution.Value(routing.NextVar(index)))
         # print("route_distance", route_distance)
 
-    # draw grid
-    for i in range(map_size + 1):
-        plt.axvline(x=i + 0.5, linewidth=0.5, color='gray')
-        plt.axhline(y=i + 0.5, linewidth=0.5, color='gray')
+    # plt.plot([0.5, 0.5], [0.5, 4.5], color='gray')
 
-    plt.xlim(-0.5, map_size + 1 + 0.5)
-    plt.ylim(-0.5, map_size + 1 + 0.5)
+    plt.xlim(-0.5, map_size + 0.5)
+    plt.ylim(-0.5, map_size + 0.5)
     plt.show()
-
 
 
 # In some case, alive drone indexs are 1,3,6. Use 'indexs_MD' for assign accurate index name

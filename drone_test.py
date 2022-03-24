@@ -2,6 +2,7 @@ import random
 import time
 import argparse
 import numpy as np
+import pybullet as p
 
 from model_System import system_model
 from model_Defender import defender_model
@@ -26,7 +27,7 @@ from gym_pybullet_drones.utils.utils import sync, str2bool
 #     return return_XYZ
 def updateTempLoca(drone_set, control_freq_hz: int):
     for drone in drone_set:
-        if drone.compromised:
+        if drone.crashed:
             continue
         drone.xyz_temp = (drone.xyz - drone.xyz_temp) / control_freq_hz + drone.xyz_temp
     # return_XYZ = (Desti_XYZ - preXYZ) / control_freq_hz + preXYZ
@@ -46,8 +47,9 @@ if __name__ == "__main__":
     attacker = attacker_model(system)
     MD_dict = system.MD_dict
     HD_dict = system.HD_dict
-    MD_set = MD_dict.values()
-    HD_set = HD_dict.values()
+    # MD_set = MD_dict.values()
+    # HD_set = HD_dict.values()
+    print("attacker locaiton", attacker.xyz)
 
 
 
@@ -61,9 +63,9 @@ if __name__ == "__main__":
     num_MD = system.num_MD # number of MD (in index, MD first then HD)
     num_HD = system.num_HD  # number of HD
     maximum_signal_radius_HD = HD_sample.maximum_signal_radius    # signal radius of HD
-    sg_HD = defender.sg_HD # defense strategy, range [0, 10]
-    min_sg_HD = defender.min_sg_HD   # minimum signal level defender can choose
-    max_sg_HD = defender.max_sg_HD  # maximum signal level defender can choose
+    sg_HD = defender.strategy # defense strategy, range [0, 10]
+    min_sg_HD = defender.min_strategy   # minimum signal level defender can choose
+    max_sg_HD = defender.max_strategy  # maximum signal level defender can choose
     tao_lower = defender.tao_lower   # The lower bounds of the number of MDs that HDs can protect simultaneously
     tao_upper = defender.tao_upper   # The upper bounds of the number of MDs that HDs can protect simultaneously
     target_map_size = system.target_map_size # size of surveillance area (map size)
@@ -96,6 +98,9 @@ if __name__ == "__main__":
 
     INIT_RPYS = np.array([[0, 0,  i * (np.pi/2)/ARGS.num_drones] for i in range(ARGS.num_drones)])
     AGGR_PHY_STEPS = int(ARGS.simulation_freq_hz/ARGS.control_freq_hz) if ARGS.aggregate else 1
+    #
+    # # reverse so HD is lower than MD at Z axis
+    # INIT_XYZS = np.flip(INIT_XYZS, axis=0)
 
     env = CtrlAviary(drone_model=ARGS.drone,
                      num_drones=ARGS.num_drones,
@@ -143,12 +148,12 @@ if __name__ == "__main__":
     # index_const = int(map_size_with_border/2)
 
     # initial position for drones (MD+HD)
-    for MD in MD_set:
+    for MD in system.MD_set:
         MD.assign_destination(INIT_XYZS[MD.ID])
         # MD.xyz = INIT_XYZS[MD.ID]
         MD.xyz_temp = MD.xyz
-    for HD in HD_set:
-        HD.assign_destination(INIT_XYZS[num_MD+HD.ID])
+    for HD in system.HD_set:
+        HD.assign_destination(INIT_XYZS[HD.ID])
         # HD.xyz = INIT_XYZS[num_MD+HD.ID]
         HD.xyz_temp = HD.xyz
 
@@ -183,21 +188,22 @@ if __name__ == "__main__":
     #     MD_trajectory[id] = np.insert(MD_trajectory[id], 2, z_mutiplier * id + z_range_start_MD, axis=1)
 
     # path planning for HD
-    drones_deploy_HD = {}
-    for HD in HD_set:
-        drones_deploy_HD[HD.ID] = np.zeros(3) # this deployment only depends on MD's latest location
+    # HD_locations = {}
+    # for HD in system.HD_set:
+    #     HD_locations[HD.ID] = np.zeros(3) # this deployment only depends on MD's latest location
+    #
+    # # Z height for HD
+    # z_range_start_HD = 1
+    # z_range_end_HD = 2
+    # if num_HD == 1:
+    #     z_mutiplier = z_range_end_HD
+    # else:
+    #     z_mutiplier = (z_range_end_HD - z_range_start_HD) / (num_HD - 1)
+    # for HD in system.HD_set:
+    #     HD_locations[HD.ID][2] = z_mutiplier * (HD.ID - num_MD) + z_range_start_HD
 
-    # Z height for HD
-    z_range_start_HD = 2.2
-    z_range_end_HD = 3
-    if num_HD == 1:
-        z_mutiplier = z_range_end_HD
-    else:
-        z_mutiplier = (z_range_end_HD - z_range_start_HD) / (num_HD - 1)
-    for HD in HD_set:
-        drones_deploy_HD[HD.ID][2] = z_mutiplier * HD.ID + z_range_start_HD
-
-
+    # create attacker
+    p.loadURDF("duck_vhacd.urdf", attacker.xyz, physicsClientId=PYB_CLIENT)
 
     while system.is_mission_Not_end():
         # update destination for drones (every 500 frames)
@@ -211,12 +217,15 @@ if __name__ == "__main__":
             if defender.is_calc_trajectory():
                 MD_trajectory = defender.MD_trajectory
 
-            # check real time scan
+            # Drones state update
+            system.Drone_state_update()
+
+            # show real time scan
             print("map \n", scan_map.round(1))
 
             # for MD update next destination
-            for MD in MD_set:
-                if MD.compromised:
+            for MD in system.MD_set:
+                if MD.crashed:
                     continue
                 MD.assign_destination(MD_trajectory[MD.ID][0])
                 # MD.xyz = MD_trajectory[MD.ID][0]
@@ -224,7 +233,7 @@ if __name__ == "__main__":
                     MD_trajectory[MD.ID] = MD_trajectory[MD.ID][1:, :]
                 else:
                     print("MD arrived:", MD.ID)
-                    MD.no_mission()
+
 
             # for i in range(num_MD):
             #     # print(MD_trajectory[i])
@@ -236,34 +245,29 @@ if __name__ == "__main__":
 
             # avoid HD crash when creating
             if frameN <= update_freq:
-                for HD in HD_set:
-                    HD.assign_destination(drones_deploy_HD[HD.ID])
-                    # HD.xyz = drones_deploy_HD[HD.ID]
+                for HD in system.HD_set:
+                    HD.assign_destination(defender.HD_locations[HD.ID])
+                    # HD.xyz = HD_locations[HD.ID]
                 # for i in range(num_MD, num_MD + num_HD):
-                #     Desti_XYZ[i] = drones_deploy_HD[i - num_MD]
+                #     Desti_XYZ[i] = HD_locations[i - num_MD]
 
             # for HD update next destination
             # Algorithm 1 in paper
-            # TODO: solve problem, only support one HD now.
-            temp_MD_set = []
-            for MD in MD_set:
-                if not MD.compromised:
-                    temp_MD_set.append(MD.ID)
-            L_MD_set = np.array(temp_MD_set)
+            L_MD_set = np.array([MD.ID for MD in system.MD_set])
             # L_HD_set = np.arange(num_MD, num_MD+num_HD)
             L_HD_set = np.arange(num_HD)
             max_radius = HD_sample.maximum_signal_radius
             p_H_r = (sg_HD * max_radius) / max_sg_HD # actual signal radius under given defense strategy sg_HD
             S_set_HD = {} # A set of HDs with assigned MDs
-            for HD_id in L_HD_set:
+            for HD in system.HD_set:
                 if L_MD_set.size == 0:
-                    S_set_HD[HD_id] = np.empty(0, dtype=int)
+                    S_set_HD[HD.ID] = np.empty(0, dtype=int)
                     continue
 
                 N_l_H_set = np.empty(0) # A set of MDs detected/protected by HD
                 for MD_id in L_MD_set:
-                    # if drones_distance(Desti_XYZ[MD_id], Desti_XYZ[HD_id]) < p_H_r:
-                    if drones_distance(MD_dict[MD_id].xyz, HD_dict[HD_id].xyz) < p_H_r:
+                    # if drones_distance(Desti_XYZ[MD_id], Desti_XYZ[HD.ID]) < p_H_r:
+                    if drones_distance(MD_dict[MD_id].xyz, HD_dict[HD.ID].xyz) < p_H_r:
                         N_l_H_set = np.append(N_l_H_set, MD_id)
 
                 if N_l_H_set.size < tao_lower:
@@ -280,20 +284,20 @@ if __name__ == "__main__":
                         if temp_set.size > N_l_H_new_set.size:  # set new position as candidate
                             N_l_H_new_set = temp_set
                             HD_pos_candidate = MD_dict[MD_id_candi].xyz
-                    HD_dict[HD_id].assign_destination_xy(HD_pos_candidate[:2])
-                    # HD_dict[HD_id].xyz[:2] = HD_pos_candidate[:2]
+                    HD_dict[HD.ID].assign_destination_xy(HD_pos_candidate[:2])
+                    # HD_dict[HD.ID].xyz[:2] = HD_pos_candidate[:2]
                     N_l_H_new_subset = N_l_H_new_set[:tao_upper]
                     L_MD_set = np.delete(L_MD_set, np.searchsorted(L_MD_set, N_l_H_new_subset))    # Remove protected MDs from set L_MD_set
-                    S_set_HD[HD_id] = N_l_H_new_subset  # Add deployed HD to set S_set_HD
+                    S_set_HD[HD.ID] = N_l_H_new_subset  # Add deployed HD to set S_set_HD
                 elif tao_lower <= N_l_H_set.size and N_l_H_set.size <= tao_upper:
                     L_MD_set = np.delete(L_MD_set, np.searchsorted(L_MD_set,N_l_H_set))     # Remove protected MDs from set L_MD_set
-                    S_set_HD[HD_id] = N_l_H_set     # Add deployed HD to set S_set_HD
+                    S_set_HD[HD.ID] = N_l_H_set     # Add deployed HD to set S_set_HD
                 else:
                     N_l_H_subset = N_l_H_set[:tao_upper]
                     L_MD_set = np.delete(L_MD_set, np.searchsorted(L_MD_set,N_l_H_subset))     # Remove protected MDs from set L_MD_set
-                    S_set_HD[HD_id] = N_l_H_subset  # Add deployed HD to set S_set_HD
+                    S_set_HD[HD.ID] = N_l_H_subset  # Add deployed HD to set S_set_HD
                 # print("L_MD_set", L_MD_set)
-            print("S_set_HD", S_set_HD)
+            print("HD protecting", S_set_HD)
 
             # print("Desti_XYZ", Desti_XYZ)
             # for MD in MD_set:
@@ -301,10 +305,15 @@ if __name__ == "__main__":
             # for HD in HD_set:
             #     Desti_XYZ[HD.ID+num_MD] = HD.xyz
 
+            attacker.observe()
+            attacker.select_strategy()
+            attacker.action()
+            # quit()
+
 
         # TARG_XYZS = stepToTarget(TARG_XYZS, Desti_XYZ, ARGS.control_freq_hz)
-        updateTempLoca(MD_set, ARGS.control_freq_hz)
-        updateTempLoca(HD_set, ARGS.control_freq_hz)
+        updateTempLoca(system.MD_set, ARGS.control_freq_hz)
+        updateTempLoca(system.HD_set, ARGS.control_freq_hz)
 
 
         H_STEP = .05
@@ -319,14 +328,14 @@ if __name__ == "__main__":
 
         # count cell scan by frame
         # for MD in MD_set:
-        #     if MD.compromised:
+        #     if MD.crashed:
         #         continue
         # # for i in range(num_MD):
         #     # print("obs[str(i)][state]", obs[str(i)]["state"][0:3].round(1))
         #     cell_x, cell_y, height_z = obs[str(MD.ID)]["state"][0:3]
         #
         #     if height_z < 0.1:
-        #         MD.compromised = True
+        #         MD.crashed = True
         #         print("Drone crashed, ID:", MD.ID)
         #         print("cell_x, cell_y, height_z", cell_x, cell_y, height_z)
         #
@@ -340,22 +349,23 @@ if __name__ == "__main__":
         #         print("ID, cell_x, cell_y, height_z", MD.ID, cell_x, cell_y, height_z)
         #         print("map_x_index_const, map_y_index_const", MD.ID, map_x_index, map_y_index)
 
-        # scan count, and check if compromised
+        # scan count, and check if crashed
         system.MD_environment_interaction(obs, scan_map)
+        system.HD_environment_interaction(obs)
 
         # energy consumption of MD and HD
         system.battery_consume()
 
         # execute action
-        for MD in MD_set:
-            if MD.compromised:
+        for MD in system.MD_set:
+            if MD.crashed:
                 continue
             action[str(MD.ID)], _, _ = ctrl[MD.ID].computeControlFromState(control_timestep=CTRL_EVERY_N_STEPS * env.TIMESTEP,
                                                                    state=obs[str(MD.ID)]["state"],
                                                                    target_pos=MD.xyz_temp)
-        for HD in HD_set:
-            action[str(HD.ID+num_MD)], _, _ = ctrl[HD.ID+num_MD].computeControlFromState(control_timestep=CTRL_EVERY_N_STEPS * env.TIMESTEP,
-                                                                   state=obs[str(HD.ID+num_MD)]["state"],
+        for HD in system.HD_set:
+            action[str(HD.ID)], _, _ = ctrl[HD.ID].computeControlFromState(control_timestep=CTRL_EVERY_N_STEPS * env.TIMESTEP,
+                                                                   state=obs[str(HD.ID)]["state"],
                                                                    target_pos=HD.xyz_temp)
         # for i in range(ARGS.num_drones):
         #     action[str(i)], _, _ = ctrl[i].computeControlFromState(control_timestep=CTRL_EVERY_N_STEPS * env.TIMESTEP,

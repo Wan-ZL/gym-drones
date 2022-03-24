@@ -8,35 +8,63 @@ class system_model:
         self.mission_Not_end = 2   # 2 means True, use 2 here to allow drone back to BaseStation in debug mode
         self.mission_success = False
         self.mission_max_status = self.mission_Not_end
-        self.target_map_size = 4
+        self.mission_duration = 0               # T_M in paper
+        self.mission_max_duration = 200         # T^{max}_m in paper
+        self.target_map_size = 10
         self.map_ori_x = 1   # original point of target area
         self.map_ori_y = 1
         self.scan_map = np.zeros((self.target_map_size,self.target_map_size))
         self.min_scan_requirement = 1
         self.recalc_trajectory = False   # True: need recalculate trajectory
-        self.num_MD = 3  # number of MD (in index, MD first then HD)
-        self.num_HD = 1  # number of HD
+        self.num_MD = 10  # number of MD (in index, MD first then HD)
+        self.num_HD = 4  # number of HD
         self.MD_dict = {}        # key is id, value is class detail
         self.HD_dict = {}
-        self.MD_crashed_IDs = []   # includes MD compromised or crashed
-        self.assign_MD()
+        self.MD_crashed_IDs = []   # includes MD crashed or crashed
         self.assign_HD()
-        self.MD_set = self.MD_dict.values()
-        self.HD_set = self.HD_dict.values()
+        self.assign_MD()
+        # self.MD_set = self.get_alive_MD()
+        # self.HD_set = self.get_alive_HD()
 
-    # scan count, and check if compromised
+    # iterate through all MD/HD and check their state (only consider alive drone)
+    def Drone_state_update(self):
+        for MD in self.MD_set:
+            MD.condition_check()
+        for HD in self.HD_set:
+            HD.condition_check()
+
+    # input type: np.ndarray
+    def calc_distance(self, xyz1: np.ndarray, xyz2: np.ndarray):
+        return np.linalg.norm(xyz1-xyz2)
+
+    # return integer as signal, round down decimal points
+    # if value greater than 10, return 10
+    def observed_signal(self, real_signal, distance):
+        res =  int(real_signal / (4 * np.pi * (distance**2)))
+        return min(res, 10)
+
+    # MD_set only contain MD that not crash
+    @property
+    def MD_set(self):
+        return [MD for MD in self.MD_dict.values() if not MD.crashed]
+
+    # HD_set only contain MD that not crash
+    @property
+    def HD_set(self):
+        return [HD for HD in self.HD_dict.values() if not HD.crashed]
+
+    # scan count, and check if crashed
     def MD_environment_interaction(self, obs, scan_map):
         for MD in self.MD_set:
-            if MD.compromised:
+            if MD.crashed:
                 continue
-        # for i in range(num_MD):
-            # print("obs[str(i)][state]", obs[str(i)]["state"][0:3].round(1))
+
             cell_x, cell_y, height_z = obs[str(MD.ID)]["state"][0:3]
 
             if height_z < 0.1:
-                MD.compromised = True
+                MD.crashed = True
                 self.recalc_trajectory = True       # when a MD offline, recalculate trajectory
-                print("\n====Drone crashed====, ID:", MD.ID,"\n")
+                print("\n====Mission Drone crashed====, ID:", MD.ID,"\n")       # TODO: add crash for HD
                 print("cell_x, cell_y, height_z", cell_x, cell_y, height_z)
 
             map_x_index = int(cell_x + 0.5)
@@ -50,6 +78,18 @@ class system_model:
                 print("ID, cell_x, cell_y, height_z", MD.ID, cell_x, cell_y, height_z)
                 print("map_x_index_const, map_y_index_const", MD.ID, map_x_index, map_y_index)
 
+    def HD_environment_interaction(self, obs):
+        for HD in self.HD_set:
+            if HD.crashed:
+                continue
+
+            cell_x, cell_y, height_z = obs[str(HD.ID)]["state"][0:3]
+
+            if height_z < 0.1:
+                HD.crashed = True
+                print("\n====Honey Drone crashed====, ID:", HD.ID, "\n")  # TODO: add crash for HD
+                print("cell_x, cell_y, height_z", cell_x, cell_y, height_z)
+
 
     def not_scanned_map(self):
         return self.scan_map < self.min_scan_requirement
@@ -60,7 +100,10 @@ class system_model:
 
     def print_HDs(self):
         for HD in self.HD_set:
-            print(vars(HD))
+            print(HD)
+
+    def print_system(self):
+        print(vars(self))
 
     def print_drones_battery(self):
         for MD in self.MD_set:
@@ -75,33 +118,42 @@ class system_model:
 
     def battery_consume(self):
         for MD in self.MD_set:
-            if MD.compromised:
+            if MD.crashed:
                 continue
             if MD.battery_update():     # True means battery charging complete
                 self.recalc_trajectory = True
         for HD in self.HD_set:          # True means battery charging complete
-            if HD.battery_update():
-                self.recalc_trajectory = True
-
-    def assign_MD(self):
-        for index in range(self.num_MD):
-            self.MD_dict[index] = Mission_Drone(index, self.update_freq)
+            HD.battery_update()         # trajectory doesn't need to recalculate when HD is ready
+            # if HD.battery_update():
+            #     self.recalc_trajectory = True
 
     def assign_HD(self):
         for index in range(self.num_HD):
             self.HD_dict[index] = Honey_Drone(index, self.update_freq)
 
+    def assign_MD(self):
+        for index in range(self.num_MD):
+            self.MD_dict[index + self.num_HD] = Mission_Drone(index + self.num_HD, self.update_freq)
+
     def sample_MD(self):
         return Mission_Drone(-1, self.update_freq)
 
     def sample_HD(self):
-        return Honey_Drone(-1, self.update_freq)
+        return Honey_Drone(-2, self.update_freq)
 
+    # this is system information update function called once per round
     def check_mission_complete(self):
+        # update system information
+        self.mission_duration += 1
+
         # check if mission can end
         if np.all(self.scan_map > 1):
+            # mission end if: all cells are scanned
             self.mission_Not_end -= 1
             self.mission_success = True
+        elif self.mission_duration > self.mission_max_duration:
+            # mission end if: mission time limit meet
+            self.mission_Not_end -= 1
         else:
             self.print_drones_battery()
 
@@ -112,11 +164,13 @@ class system_model:
                 print("scanned map:\n", self.scan_map)
                 self.print_MDs()
                 self.print_HDs()
+                self.print_system()
             else:
                 print("Mission Fail :(")
                 print("scanned map:\n", self.scan_map)
                 self.print_MDs()
                 self.print_HDs()
+                self.print_system()
 
         return self.mission_Not_end
 
