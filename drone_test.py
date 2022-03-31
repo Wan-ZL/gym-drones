@@ -3,6 +3,7 @@ import time
 import argparse
 import numpy as np
 import pybullet as p
+import os
 
 from model_System import system_model
 from model_Defender import defender_model
@@ -29,7 +30,10 @@ def updateTempLoca(drone_set, control_freq_hz: int):
     for drone in drone_set:
         if drone.crashed:
             continue
-        drone.xyz_temp = (drone.xyz - drone.xyz_temp) / control_freq_hz + drone.xyz_temp
+        vector_per_frame = (drone.xyz - drone.xyz_temp) / control_freq_hz
+        if max(vector_per_frame) > drone.speed_per_frame_max:       # avoid too fast movement. It cause collision
+            vector_per_frame = vector_per_frame/(max(vector_per_frame)/drone.speed_per_frame_max)
+        drone.xyz_temp = vector_per_frame + drone.xyz_temp
     # return_XYZ = (Desti_XYZ - preXYZ) / control_freq_hz + preXYZ
     # return return_XYZ
 
@@ -54,21 +58,21 @@ if __name__ == "__main__":
 
 
     # sample for obtain general parameter of MD and HD
-    HD_sample = system.sample_HD()
-    MD_sample = system.sample_MD()
+    HD_sample = system.sample_HD
+    MD_sample = system.sample_MD
 
 
 
     #### default parameters:
     num_MD = system.num_MD # number of MD (in index, MD first then HD)
     num_HD = system.num_HD  # number of HD
-    maximum_signal_radius_HD = HD_sample.maximum_signal_radius    # signal radius of HD
+    # maximum_signal_radius_HD = HD_sample.signal_radius    # signal radius of HD
     sg_HD = defender.strategy # defense strategy, range [0, 10]
-    min_sg_HD = defender.min_strategy   # minimum signal level defender can choose
-    max_sg_HD = defender.max_strategy  # maximum signal level defender can choose
+    # min_sg_HD = defender.min_strategy   # minimum signal level defender can choose
+    # max_sg_HD = defender.max_strategy  # maximum signal level defender can choose
     tao_lower = defender.tao_lower   # The lower bounds of the number of MDs that HDs can protect simultaneously
     tao_upper = defender.tao_upper   # The upper bounds of the number of MDs that HDs can protect simultaneously
-    target_map_size = system.target_map_size # size of surveillance area (map size)
+    target_map_size = system.map_cell_number # size of surveillance area (map size)
 
 
     #### Define and parse (optional) arguments for the script ##
@@ -166,15 +170,15 @@ if __name__ == "__main__":
     # path planning (test)
     # MD_trajectory = {}
     # for id in range(ARGS.num_drones):
-    #     x_temp_set = np.zeros(target_map_size).reshape(target_map_size,1) + map_x + id
-    #     y_temp_set = np.arange(target_map_size).reshape(target_map_size,1) + map_y
-    #     z_temp_set = np.random.uniform(2, 2, target_map_size).reshape(target_map_size,1)
+    #     x_temp_set = np.zeros(map_cell_number).reshape(map_cell_number,1) + map_x + id
+    #     y_temp_set = np.arange(map_cell_number).reshape(map_cell_number,1) + map_y
+    #     z_temp_set = np.random.uniform(2, 2, map_cell_number).reshape(map_cell_number,1)
     #     MD_trajectory[id] = np.concatenate((x_temp_set, y_temp_set), axis = 1)
     #     MD_trajectory[id] = np.concatenate((MD_trajectory[id], z_temp_set), axis=1)
 
     # path planning for MD
     MD_trajectory = defender.MD_trajectory
-    # MD_trajectory = defender.MD_trajectory(num_MD, target_map_size)
+    # MD_trajectory = defender.MD_trajectory(num_MD, map_cell_number)
     # MD_trajectory = defender.create_trajectory()
 
     # Z height for MD
@@ -203,11 +207,14 @@ if __name__ == "__main__":
     #     HD_locations[HD.ID][2] = z_mutiplier * (HD.ID - num_MD) + z_range_start_HD
 
     # create attacker
+    # print(os.getcwd())
+    # print(os.path.join(os.getcwd(),"urdf_model/duck_vhacd.urdf"))
     p.loadURDF("duck_vhacd.urdf", attacker.xyz, physicsClientId=PYB_CLIENT)
+
+    update_freq = system.update_freq
 
     while system.is_mission_Not_end():
         # update destination for drones (every 500 frames)
-        update_freq = system.update_freq
         if frameN % update_freq == 0:
 
             # check if mission complete
@@ -224,15 +231,16 @@ if __name__ == "__main__":
             print("map \n", scan_map.round(1))
 
             # for MD update next destination
-            for MD in system.MD_set:
-                if MD.crashed:
-                    continue
-                MD.assign_destination(MD_trajectory[MD.ID][0])
-                # MD.xyz = MD_trajectory[MD.ID][0]
-                if MD_trajectory[MD.ID].shape[0] > 1:
-                    MD_trajectory[MD.ID] = MD_trajectory[MD.ID][1:, :]
-                else:
-                    print("MD arrived:", MD.ID)
+            defender.update_MD_next_destination()
+            # for MD in system.MD_set:
+            #     if MD.crashed:
+            #         continue
+            #     MD.assign_destination(MD_trajectory[MD.ID][0])
+            #     # MD.xyz = MD_trajectory[MD.ID][0]
+            #     if MD_trajectory[MD.ID].shape[0] > 1:
+            #         MD_trajectory[MD.ID] = MD_trajectory[MD.ID][1:, :]
+            #     else:
+            #         print("MD arrived:", MD.ID)
 
 
             # for i in range(num_MD):
@@ -251,53 +259,54 @@ if __name__ == "__main__":
                 # for i in range(num_MD, num_MD + num_HD):
                 #     Desti_XYZ[i] = HD_locations[i - num_MD]
 
-            # for HD update next destination
-            # Algorithm 1 in paper
-            L_MD_set = np.array([MD.ID for MD in system.MD_set])
-            # L_HD_set = np.arange(num_MD, num_MD+num_HD)
-            L_HD_set = np.arange(num_HD)
-            max_radius = HD_sample.maximum_signal_radius
-            p_H_r = (sg_HD * max_radius) / max_sg_HD # actual signal radius under given defense strategy sg_HD
-            S_set_HD = {} # A set of HDs with assigned MDs
-            for HD in system.HD_set:
-                if L_MD_set.size == 0:
-                    S_set_HD[HD.ID] = np.empty(0, dtype=int)
-                    continue
-
-                N_l_H_set = np.empty(0) # A set of MDs detected/protected by HD
-                for MD_id in L_MD_set:
-                    # if drones_distance(Desti_XYZ[MD_id], Desti_XYZ[HD.ID]) < p_H_r:
-                    if drones_distance(MD_dict[MD_id].xyz, HD_dict[HD.ID].xyz) < p_H_r:
-                        N_l_H_set = np.append(N_l_H_set, MD_id)
-
-                if N_l_H_set.size < tao_lower:
-                    HD_pos_candidate = np.zeros(3)
-                    N_l_H_new_set = np.empty(0)
-                    for MD_id_candi in L_MD_set:      # search MD position that HD can move to so more MD can be protected
-                        temp_set = np.empty(0)
-                        for MD_id in L_MD_set:
-                            temp_position = MD_dict[MD_id].xyz
-                            temp_position[:2] = MD_dict[MD_id].xyz[:2]
-                            # if drones_distance(Desti_XYZ[MD_id_candi], Desti_XYZ[MD_id]) < p_H_r:
-                            if drones_distance(MD_dict[MD_id_candi].xyz, MD_dict[MD_id].xyz) < p_H_r:
-                                temp_set = np.append(temp_set, MD_id)
-                        if temp_set.size > N_l_H_new_set.size:  # set new position as candidate
-                            N_l_H_new_set = temp_set
-                            HD_pos_candidate = MD_dict[MD_id_candi].xyz
-                    HD_dict[HD.ID].assign_destination_xy(HD_pos_candidate[:2])
-                    # HD_dict[HD.ID].xyz[:2] = HD_pos_candidate[:2]
-                    N_l_H_new_subset = N_l_H_new_set[:tao_upper]
-                    L_MD_set = np.delete(L_MD_set, np.searchsorted(L_MD_set, N_l_H_new_subset))    # Remove protected MDs from set L_MD_set
-                    S_set_HD[HD.ID] = N_l_H_new_subset  # Add deployed HD to set S_set_HD
-                elif tao_lower <= N_l_H_set.size and N_l_H_set.size <= tao_upper:
-                    L_MD_set = np.delete(L_MD_set, np.searchsorted(L_MD_set,N_l_H_set))     # Remove protected MDs from set L_MD_set
-                    S_set_HD[HD.ID] = N_l_H_set     # Add deployed HD to set S_set_HD
-                else:
-                    N_l_H_subset = N_l_H_set[:tao_upper]
-                    L_MD_set = np.delete(L_MD_set, np.searchsorted(L_MD_set,N_l_H_subset))     # Remove protected MDs from set L_MD_set
-                    S_set_HD[HD.ID] = N_l_H_subset  # Add deployed HD to set S_set_HD
-                # print("L_MD_set", L_MD_set)
-            print("HD protecting", S_set_HD)
+            # # for HD update next destination
+            defender.update_HD_next_destination()
+            # # Algorithm 1 in paper
+            # L_MD_set = np.array([MD.ID for MD in system.MD_set])
+            # # L_HD_set = np.arange(num_MD, num_MD+num_HD)
+            # L_HD_set = np.arange(num_HD)
+            # max_radius = HD_sample.signal_radius
+            # p_H_r = (sg_HD * max_radius) / max_sg_HD # actual signal radius under given defense strategy sg_HD
+            # S_set_HD = {} # A set of HDs with assigned MDs
+            # for HD in system.HD_set:
+            #     if L_MD_set.size == 0:
+            #         S_set_HD[HD.ID] = np.empty(0, dtype=int)
+            #         continue
+            #
+            #     N_l_H_set = np.empty(0) # A set of MDs detected/protected by HD
+            #     for MD_id in L_MD_set:
+            #         # if drones_distance(Desti_XYZ[MD_id], Desti_XYZ[HD.ID]) < p_H_r:
+            #         if drones_distance(MD_dict[MD_id].xyz, HD_dict[HD.ID].xyz) < p_H_r:
+            #             N_l_H_set = np.append(N_l_H_set, MD_id)
+            #
+            #     if N_l_H_set.size < tao_lower:
+            #         HD_pos_candidate = np.zeros(3)
+            #         N_l_H_new_set = np.empty(0)
+            #         for MD_id_candi in L_MD_set:      # search MD position that HD can move to so more MD can be protected
+            #             temp_set = np.empty(0)
+            #             for MD_id in L_MD_set:
+            #                 temp_position = MD_dict[MD_id].xyz
+            #                 temp_position[:2] = MD_dict[MD_id].xyz[:2]
+            #                 # if drones_distance(Desti_XYZ[MD_id_candi], Desti_XYZ[MD_id]) < p_H_r:
+            #                 if drones_distance(MD_dict[MD_id_candi].xyz, MD_dict[MD_id].xyz) < p_H_r:
+            #                     temp_set = np.append(temp_set, MD_id)
+            #             if temp_set.size > N_l_H_new_set.size:  # set new position as candidate
+            #                 N_l_H_new_set = temp_set
+            #                 HD_pos_candidate = MD_dict[MD_id_candi].xyz
+            #         HD_dict[HD.ID].assign_destination_xy(HD_pos_candidate[:2])      # nwe position for HD
+            #         # HD_dict[HD.ID].xyz[:2] = HD_pos_candidate[:2]
+            #         N_l_H_new_subset = N_l_H_new_set[:tao_upper]
+            #         L_MD_set = np.delete(L_MD_set, np.searchsorted(L_MD_set, N_l_H_new_subset))    # Remove protected MDs from set L_MD_set
+            #         S_set_HD[HD.ID] = N_l_H_new_subset  # Add deployed HD to set S_set_HD
+            #     elif tao_lower <= N_l_H_set.size and N_l_H_set.size <= tao_upper:
+            #         L_MD_set = np.delete(L_MD_set, np.searchsorted(L_MD_set,N_l_H_set))     # Remove protected MDs from set L_MD_set
+            #         S_set_HD[HD.ID] = N_l_H_set     # Add deployed HD to set S_set_HD
+            #     else:
+            #         N_l_H_subset = N_l_H_set[:tao_upper]
+            #         L_MD_set = np.delete(L_MD_set, np.searchsorted(L_MD_set,N_l_H_subset))     # Remove protected MDs from set L_MD_set
+            #         S_set_HD[HD.ID] = N_l_H_subset  # Add deployed HD to set S_set_HD
+            #     # print("L_MD_set", L_MD_set)
+            # print("HD protecting", S_set_HD)
 
             # print("Desti_XYZ", Desti_XYZ)
             # for MD in MD_set:
@@ -305,9 +314,17 @@ if __name__ == "__main__":
             # for HD in HD_set:
             #     Desti_XYZ[HD.ID+num_MD] = HD.xyz
 
+            # TODO: Use order: MD->HD->DS->AS. algorithm 1: HD P^H_r default as 5
+            # Attacker
             attacker.observe()
             attacker.select_strategy()
             attacker.action()
+
+            # Defender
+            defender.select_strategy()
+            defender.action()
+
+
             # quit()
 
 

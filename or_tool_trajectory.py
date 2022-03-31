@@ -9,26 +9,27 @@ import math
 import time
 
 
-def create_data_model(map_size, locations_MD, num_vehicles, depot, not_scanned_map):
+def create_data_model(map_cell_number, cell_size, locations_MD, num_vehicles, depot, not_scanned_map):
     """Stores the data for the problem."""
     data = {}
     data['num_vehicles'] = num_vehicles    # vehicle/drone number
     data['depot'] = depot           # base station index
-    data['target_map_size'] = map_size
+    data['map_cell_number'] = map_cell_number
+    data['cell_size'] = cell_size
 
     baseStation_x = 0
     baseStation_y = 0
-    cell_number = map_size * map_size + 1  # including base station
-    map_x_start = baseStation_x+1
-    map_x_end = map_size+1
-    map_y_start = baseStation_y+1
-    map_y_end = map_size+1
+    cell_number = map_cell_number * map_cell_number + 1  # including base station
+    map_x_start = baseStation_x + 1
+    map_x_end = map_cell_number * cell_size +1
+    map_y_start = baseStation_y + 1
+    map_y_end = map_cell_number * cell_size + 1
 
     # distances
     # In this test file, locations are tuple
     location_set = [(baseStation_x, baseStation_y)]
-    for x in range(map_x_start, map_x_end):
-        for y in range(map_y_start, map_y_end):
+    for x in range(map_x_start, map_x_end, cell_size):
+        for y in range(map_y_start, map_y_end, cell_size):
             # trajectory only consider cells not scanned, not_scanned_map index start from 0
             if not_scanned_map[x-map_x_start, y-map_y_start]:
                 location_set.append((x, y))
@@ -114,17 +115,28 @@ def print_solution(data, manager, routing, solution, variable_precision, node2po
 def draw_map(data, manager, routing, solution):
     fig, ax = plt.subplots()
     location_set = data['locations']
-    map_size = data['target_map_size']
+    map_cell_number = data['map_cell_number']
+    cell_size = data['cell_size']
+    map_size = map_cell_number * cell_size
     colors_order = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    colors_len = len(colors_order) - 1
 
     # draw grid
     plt.plot([0.5, 0.5], [-0.5, map_size + 0.5], linewidth=1, color='gray', zorder=0)
     plt.plot([-0.5, map_size + 0.5], [0.5, 0.5], linewidth=1, color='gray', zorder=0)
+
+    # draw meter-unit-based grid
     for i in range(1,map_size):
-        plt.plot([i+0.5, i+0.5], [0.5, map_size+0.5], linewidth=0.5, color='gray', zorder=0)
-        plt.plot([0.5, map_size + 0.5], [i + 0.5, i + 0.5], linewidth=0.5, color='gray', zorder=0)
+        plt.plot([i+0.5, i+0.5], [0.5, map_size+0.5], linewidth=0.2, color='gray', zorder=0)
+        plt.plot([0.5, map_size + 0.5], [i + 0.5, i + 0.5], linewidth=0.2, color='gray', zorder=0)
         # plt.axvline(x=i + 0.5, linewidth=0.5, color='gray', zorder=0)
         # plt.axhline(y=i + 0.5, linewidth=0.5, color='gray', zorder=0)
+
+    # draw cell-based grid
+    for i in range(1, map_size+cell_size, cell_size):
+        plt.plot([i-0.5, i-0.5], [0.5, map_size+0.5], linewidth=0.5, color='gray', zorder=1)
+        plt.plot([0.5, map_size + 0.5], [i - 0.5, i - 0.5], linewidth=0.5, color='gray', zorder=1)
+
 
     # draw gray to target area               # draw this first to make it on lowest layer.
     ax.add_patch(Rectangle((-0.5, -0.5), 1, 1, color='0.95', zorder=0))
@@ -146,7 +158,7 @@ def draw_map(data, manager, routing, solution):
             # print("[i_x, i_y]", [i_x, i_y])
             [j_x, j_y] = location_set[manager.IndexToNode(index)]
             if i_x is not None:
-                plt.arrow(i_x, i_y, j_x - i_x, j_y - i_y, width=0.05, color = colors_order[vehicle_id], length_includes_head=True)
+                plt.arrow(i_x, i_y, j_x - i_x, j_y - i_y, width=0.05, color = colors_order[vehicle_id % colors_len], length_includes_head=True)
             [i_x, i_y] = [j_x, j_y]
             previous_index = index
             index = solution.Value(routing.NextVar(index))
@@ -155,7 +167,7 @@ def draw_map(data, manager, routing, solution):
         # print("[i_x, i_y]", [i_x, i_y])
         [j_x, j_y] = location_set[manager.IndexToNode(index)]
         if i_x is not None:
-            plt.arrow(i_x, i_y, j_x - i_x, j_y - i_y, width=0.05, color = colors_order[vehicle_id], length_includes_head=True)
+            plt.arrow(i_x, i_y, j_x - i_x, j_y - i_y, width=0.05, color = colors_order[vehicle_id % colors_len], length_includes_head=True)
         plt.plot(j_x, j_y, 'ro')
         # print(solution.Value(routing.NextVar(index)))
         # print("route_distance", route_distance)
@@ -175,8 +187,6 @@ def generate_route_array(data, manager, routing, solution, indexs_MD):
         index = routing.Start(vehicle_id)
         route_array[indexs_MD[vehicle_id]] = np.array([location_set[manager.IndexToNode(index)]]).astype(float)
         while not routing.IsEnd(index):
-            # print("location_set[manager.IndexToNode(index)]", location_set[manager.IndexToNode(index)])
-            # print("route_array[vehicle_id]", route_array[vehicle_id])
             index = solution.Value(routing.NextVar(index))
             route_array[indexs_MD[vehicle_id]] = np.concatenate((route_array[indexs_MD[vehicle_id]],[location_set[manager.IndexToNode(index)]]), axis=0)
 
@@ -189,16 +199,16 @@ def generate_route_array(data, manager, routing, solution, indexs_MD):
 
 
 
-def MD_path_plan_main(indexs_MD, locations_MD, map_size, not_scanned_map):
+def MD_path_plan_main(indexs_MD, locations_MD, map_cell_number, cell_size, not_scanned_map):
     """Entry point of the program."""
     # print("locations_MD", locations_MD)
-    # target_map_size = 5
+    # map_cell_number = 5
     num_vehicles = len(locations_MD)  # vehicle/drone number
     depot = 0  # base station index
     variable_precision = 100 # 100 means keep two decimal
 
     # Instantiate the data problem.
-    data = create_data_model(map_size, locations_MD, num_vehicles, depot, not_scanned_map)
+    data = create_data_model(map_cell_number, cell_size, locations_MD, num_vehicles, depot, not_scanned_map)
 
     # create distance for all nodes.
     distance_matrix, node2position, position2node = compute_euclidean_distance_matrix(data['locations'], variable_precision)
@@ -232,6 +242,7 @@ def MD_path_plan_main(indexs_MD, locations_MD, map_size, not_scanned_map):
     routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
 
     # Add Distance constraint.
+    map_size = map_cell_number * cell_size
     dimension_name = 'Distance'
     routing.AddDimension(
         transit_callback_index,
@@ -275,14 +286,16 @@ def MD_path_plan_main(indexs_MD, locations_MD, map_size, not_scanned_map):
 if __name__ == '__main__':
     num_MD = 3
     index_MD = range(num_MD)
-    index_MD = [1,3,6]
+    # index_MD = [1,3,6]
     locations_MD = []
     for i in range(num_MD):
-        locations_MD.append((1,0))
-    map_size = 6
+        locations_MD.append((0,0))
+    map_cell_number = 8
+    cell_size = 2
+    map_size = map_cell_number * cell_size
     not_scanned_map = np.ones((map_size,map_size), dtype=bool)
-    not_scanned_map[0,5] = False
-    not_scanned_map[5, 0] = False
-    MD_path_plan_main(index_MD, locations_MD, map_size, not_scanned_map)
+    # not_scanned_map[0,cell_size] = False
+    # not_scanned_map[cell_size, 0] = False
+    MD_path_plan_main(index_MD, locations_MD, map_cell_number, cell_size, not_scanned_map)
 
 

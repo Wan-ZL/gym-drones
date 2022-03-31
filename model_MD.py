@@ -10,7 +10,6 @@ class Mission_Drone(Drone):
         self.battery = self.battery_max  # battery level
         self.charging_rate = 0.02
         self.consume_rate = 0.01
-        self.maximum_signal_radius = 2
         self.surveyed_time = 0
         self.surveyed_cell = np.array([])     # cell ID goes here
 

@@ -10,5 +10,4 @@ class Honey_Drone(Drone):
         self.battery = self.battery_max  # battery level
         self.charging_rate = 0.01
         self.consume_rate = 0.005
-        self.maximum_signal_radius = 3
         self.protecting = np.array([])        # the MD (ID) protecting now

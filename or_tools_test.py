@@ -13,7 +13,7 @@ def create_data_model(map_size, locations_MD, num_vehicles, depot, not_scanned_m
     data = {}
     data['num_vehicles'] = num_vehicles    # vehicle/drone number
     data['depot'] = depot           # base station index
-    data['target_map_size'] = map_size
+    data['map_cell_number'] = map_size
 
     baseStation_x = 0
     baseStation_y = 0
@@ -113,7 +113,7 @@ def print_solution(data, manager, routing, solution, variable_precision, node2po
 
 def draw_map(data, manager, routing, solution):
     location_set = data['locations']
-    map_size = data['target_map_size']
+    map_size = data['map_cell_number']
     colors_order = plt.rcParams['axes.prop_cycle'].by_key()['color']
     for vehicle_id in range(data['num_vehicles']):
         # print("vehicle_id", vehicle_id)
@@ -178,7 +178,7 @@ def generate_route_array(data, manager, routing, solution):
 def MD_path_plan_main(locations_MD, num_MD, map_size, not_scanned_map):
     """Entry point of the program."""
     print("locations_MD", locations_MD)
-    # target_map_size = 5
+    # map_cell_number = 5
     num_vehicles = num_MD  # vehicle/drone number
     depot = 0  # base station index
     variable_precision = 100 # 100 means keep two decimal

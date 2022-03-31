@@ -46,7 +46,7 @@ if __name__ == '__main__':
     map_size = 7
     # E = {(0,0),(0,1),(1,0),(1,1)}
     #                   (i_x, i_y), (j_x, j_y)
-    # d_ij = np.zeros((target_map_size,target_map_size,target_map_size,target_map_size))
+    # d_ij = np.zeros((map_cell_number,map_cell_number,map_cell_number,map_cell_number))
 
     # Base station location (BS and cell locations cannot be the same)
     baseStation_x = map_size
@@ -192,22 +192,22 @@ if __name__ == '__main__':
 
     # all drone must back to station
     # sum_i0k = 0
-    # for i_x in range(target_map_size):
-    #     for i_y in range(target_map_size):
+    # for i_x in range(map_cell_number):
+    #     for i_y in range(map_cell_number):
     #         sum_i0k += X_ijk[(j_x, j_y), (baseStation_x, baseStation_y)]
     # MyProbLP += (sum_i0k == 1)
 
     # Eq.(10)
     # sum_sum_X_ijk = 0
-    # for i_x in range(target_map_size):
-    #     for i_y in range(target_map_size):
-    #         for j_x in range(target_map_size):
-    #             for j_y in range(target_map_size):
+    # for i_x in range(map_cell_number):
+    #     for i_y in range(map_cell_number):
+    #         for j_x in range(map_cell_number):
+    #             for j_y in range(map_cell_number):
     #                 if (i_x, i_y) != (j_x, j_y):
     #                     sum_sum_X_ijk += X_ijk[(i_x,i_y),(j_x,j_y)]
-    # S_1 = target_map_size * target_map_size - 1
+    # S_1 = map_cell_number * map_cell_number - 1
     # MyProbLP += (sum_sum_X_ijk <= S_1)
-    # MyProbLP += (all_variable <= (target_map_size*target_map_size-1)) # Error: should be '>=' or '<='?
+    # MyProbLP += (all_variable <= (map_cell_number*map_cell_number-1)) # Error: should be '>=' or '<='?
 
     # extra constrain
     for i_x in range(map_size):
