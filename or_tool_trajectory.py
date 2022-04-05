@@ -126,6 +126,7 @@ def draw_map(data, manager, routing, solution):
     plt.plot([-0.5, map_size + 0.5], [0.5, 0.5], linewidth=1, color='gray', zorder=0)
 
     # draw meter-unit-based grid
+    # if cell_size <= 20:      # takes too many time to draw meter unit lines. So ignore this when cell size too large
     for i in range(1,map_size):
         plt.plot([i+0.5, i+0.5], [0.5, map_size+0.5], linewidth=0.2, color='gray', zorder=0)
         plt.plot([0.5, map_size + 0.5], [i + 0.5, i + 0.5], linewidth=0.2, color='gray', zorder=0)
@@ -139,10 +140,12 @@ def draw_map(data, manager, routing, solution):
 
 
     # draw gray to target area               # draw this first to make it on lowest layer.
+    # if cell_size <= 20:  # takes too many time to draw patch. So ignore this
     ax.add_patch(Rectangle((-0.5, -0.5), 1, 1, color='0.95', zorder=0))
-    for i in range(map_size):
-        for j in range(map_size):
-            ax.add_patch(Rectangle((i + 0.5, j + 0.5), 1, 1, color='0.95', zorder=0))
+    ax.add_patch(Rectangle((0.5, 0.5), map_size, map_size, color='0.95', zorder=0))
+        # for i in range(map_size):
+        #     for j in range(map_size):
+        #         ax.add_patch(Rectangle((i + 0.5, j + 0.5), 1, 1, color='0.95', zorder=0))
 
 
     for vehicle_id in range(data['num_vehicles']):
@@ -284,14 +287,14 @@ def MD_path_plan_main(indexs_MD, locations_MD, map_cell_number, cell_size, not_s
 
 
 if __name__ == '__main__':
-    num_MD = 3
+    num_MD = 6
     index_MD = range(num_MD)
     # index_MD = [1,3,6]
     locations_MD = []
     for i in range(num_MD):
         locations_MD.append((0,0))
-    map_cell_number = 8
-    cell_size = 2
+    map_cell_number = 10
+    cell_size = 100
     map_size = map_cell_number * cell_size
     not_scanned_map = np.ones((map_size,map_size), dtype=bool)
     # not_scanned_map[0,cell_size] = False

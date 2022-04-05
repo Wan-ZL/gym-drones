@@ -30,9 +30,12 @@ def updateTempLoca(drone_set, control_freq_hz: int):
     for drone in drone_set:
         if drone.crashed:
             continue
-        vector_per_frame = (drone.xyz - drone.xyz_temp) / control_freq_hz
-        if max(vector_per_frame) > drone.speed_per_frame_max:       # avoid too fast movement. It cause collision
-            vector_per_frame = vector_per_frame/(max(vector_per_frame)/drone.speed_per_frame_max)
+        vector_per_frame = (drone.xyz - drone.xyz_temp) / (2 * control_freq_hz)  # multiple 2 to slow down drone speed for a long distance travel
+
+        # avoid too fast movement. It cause crash
+        vector_magnitude = np.linalg.norm(vector_per_frame)
+        if vector_magnitude > drone.speed_per_frame_max:
+            vector_per_frame = vector_per_frame / (vector_magnitude/drone.speed_per_frame_max)
         drone.xyz_temp = vector_per_frame + drone.xyz_temp
     # return_XYZ = (Desti_XYZ - preXYZ) / control_freq_hz + preXYZ
     # return return_XYZ
@@ -72,7 +75,7 @@ if __name__ == "__main__":
     # max_sg_HD = defender.max_strategy  # maximum signal level defender can choose
     tao_lower = defender.tao_lower   # The lower bounds of the number of MDs that HDs can protect simultaneously
     tao_upper = defender.tao_upper   # The upper bounds of the number of MDs that HDs can protect simultaneously
-    target_map_size = system.map_cell_number # size of surveillance area (map size)
+    map_size = system.map_size # size of surveillance area (map size)
 
 
     #### Define and parse (optional) arguments for the script ##
@@ -146,7 +149,7 @@ if __name__ == "__main__":
     map_border = 0  # create a boarder to avoid 'index error'
     map_x_index_const = map_x - map_border
     map_y_index_const = map_y - map_border
-    map_size_with_border = target_map_size+1 + (2 * map_border)
+    map_size_with_border = map_size + 1 + (2 * map_border)
     print("map_size_with_border", map_size_with_border)
     scan_map = np.zeros((map_size_with_border,map_size_with_border))
     # index_const = int(map_size_with_border/2)
@@ -211,8 +214,10 @@ if __name__ == "__main__":
     # print(os.path.join(os.getcwd(),"urdf_model/duck_vhacd.urdf"))
     p.loadURDF("duck_vhacd.urdf", attacker.xyz, physicsClientId=PYB_CLIENT)
 
-    update_freq = system.update_freq
+    # initial env
+    obs, reward, done, info = env.step(action)
 
+    update_freq = system.update_freq
     while system.is_mission_Not_end():
         # update destination for drones (every 500 frames)
         if frameN % update_freq == 0:
@@ -228,10 +233,15 @@ if __name__ == "__main__":
             system.Drone_state_update()
 
             # show real time scan
-            print("map \n", scan_map.round(1))
+            # print("map \n", scan_map.round(1))
+            print("map \n", system.scan_cell_map)
 
             # for MD update next destination
-            defender.update_MD_next_destination()
+            if frameN <= update_freq:   # first round doesn't check scan_map
+                defender.update_MD_next_destination_no_scanMap()
+            else:
+                defender.update_MD_next_destination()
+
             # for MD in system.MD_set:
             #     if MD.crashed:
             #         continue
@@ -367,7 +377,7 @@ if __name__ == "__main__":
         #         print("map_x_index_const, map_y_index_const", MD.ID, map_x_index, map_y_index)
 
         # scan count, and check if crashed
-        system.MD_environment_interaction(obs, scan_map)
+        system.MD_environment_interaction(obs)
         system.HD_environment_interaction(obs)
 
         # energy consumption of MD and HD
@@ -411,6 +421,10 @@ if __name__ == "__main__":
         # if ARGS.gui:
         #     sync(frameN, START, env.TIMESTEP)
         frameN += 1
+
+        #### Sync the simulation ###################################
+        if ARGS.gui:
+            sync(frameN, START, env.TIMESTEP)
 
     # Game End
     # system.print_MDs()

@@ -9,7 +9,9 @@ class Drone:
         # self.charging = True
         self.xyz = np.zeros(3)  # Droen location (location of destination)
         self.xyz_temp = self.xyz.copy()  # intermediate location to destination
-        self.speed_per_frame_max = 1000
+        # TODO: drone crash when move long distance. Find a good way to control drone
+        # TODO: drone not arrive before go next destination, solve this by keeping the same destination if target is not scan complete.
+        self.speed_per_frame_max = 0.08     # this value obtained from experiment that drone doesn't crash for a 150 meter fly in one round
         self.crashed = False             #
         self.in_GCS = True
         self.battery_max = 100.0         # battery level
@@ -35,29 +37,35 @@ class Drone:
     #                 self.charging = False
     #             return True
     #     return False
+
     def battery_update(self):       # consume energy or charging (True means drone is ready (recalculate trajectory))
         if self.crashed:        # ignore crashed drone
-            return
+            return False
 
         if self.in_GCS:
             if self.battery < self.battery_max: # drone in GCS with not full battery will charge
                 self.battery += self.charging_rate
+                # send signal if battery full
+                if self.battery >= self.battery_max:
+                    return True
         else:                                   # any drone not in GCS consume energy
             self.battery -= self.consume_rate
+        return False
 
 
     # check if a drone should change from normal condition to crashed condition
-    def new_crash(self, height_z):
+    def new_crash(self, xyz_current):
         if self.crashed:
             return False
         if not self.in_GCS:     # drone in GCS always safe
             if self.battery <= 0:
-                print("\n====Mission Drone crashed by zero battery====, ID:", self.ID, self.type, "\n")
+                print("\n====Drone crashed by zero battery====, ID:", self.ID, self.type, "\n")
                 self.crashed = True
                 return True
-            if height_z < 0.1:
+            if xyz_current[2] < 0.1:
                 self.crashed = True
-                print("\n====Mission Drone crashed====, ID:", MD.ID, "\n")  # TODO: add crash for HD
+                print("\n====Drone crashed by zero height====, ID:", self.ID, self.type, xyz_current, "\n")
+                print(self)
                 self.crashed = True
                 return True
         return False

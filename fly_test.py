@@ -33,13 +33,15 @@ from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl
 from gym_pybullet_drones.control.SimplePIDControl import SimplePIDControl
 from gym_pybullet_drones.utils.Logger import Logger
 from gym_pybullet_drones.utils.utils import sync, str2bool
+from pynput.keyboard import Key, Listener
+# import keyboard
 
 if __name__ == "__main__":
-    print("here")
+
     #### Define and parse (optional) arguments for the script ##
     parser = argparse.ArgumentParser(description='Helix flight script using CtrlAviary or VisionAviary and DSLPIDControl')
     parser.add_argument('--drone',              default="cf2x",     type=DroneModel,    help='Drone model (default: CF2X)', metavar='', choices=DroneModel)
-    parser.add_argument('--num_drones',         default=3,          type=int,           help='Number of drones (default: 3)', metavar='')
+    parser.add_argument('--num_drones',         default=1,          type=int,           help='Number of drones (default: 3)', metavar='')
     parser.add_argument('--physics',            default="pyb",      type=Physics,       help='Physics updates (default: PYB)', metavar='', choices=Physics)
     parser.add_argument('--vision',             default=False,      type=str2bool,      help='Whether to use VisionAviary (default: False)', metavar='')
     parser.add_argument('--gui',                default=True,       type=str2bool,      help='Whether to use PyBullet GUI (default: True)', metavar='')
@@ -133,11 +135,55 @@ if __name__ == "__main__":
     elif ARGS.drone in [DroneModel.HB]:
         ctrl = [SimplePIDControl(drone_model=ARGS.drone) for i in range(ARGS.num_drones)]
 
+    move_pos = np.array([1, 1, 1])
+    move_vel = np.array([-2, -2, -2])
+    def on_press(key):
+        print('{0} pressed'.format(
+            key))
+        char_key = str(key)
+        # print(char_key)
+        # print(type(char_key))
+        # print(char_key == "Key.space")
+        # print(char_key == "'i'")
+        if char_key == "'i'":
+            move_pos[1] += 1
+        elif char_key == "'k'":
+            move_pos[1] -= 1
+        elif char_key == "'j'":
+            move_pos[0] -= 1
+        elif char_key == "'l'":
+            move_pos[0] += 1
+
+
+
+    def on_release(key):
+        print('{0} release'.format(
+            key))
+        if key == Key.esc:
+            # Stop listener
+            return False
+
     #### Run the simulation ####################################
     CTRL_EVERY_N_STEPS = int(np.floor(env.SIM_FREQ/ARGS.control_freq_hz))
     action = {str(i): np.array([0,0,0,0]) for i in range(ARGS.num_drones)}
     START = time.time()
-    for i in range(0, int(ARGS.duration_sec*env.SIM_FREQ), AGGR_PHY_STEPS):
+    # for i in range(0, int(ARGS.duration_sec*env.SIM_FREQ), AGGR_PHY_STEPS):
+    #     print(i)
+    i = 0
+
+    # ...or, in a non-blocking fashion:
+    listener = Listener(
+        on_press=on_press,
+        on_release=on_release)
+    listener.start()
+
+    while True:
+        # Collect events until released
+        # with Listener(
+        #         on_press=on_press,
+        #         on_release=on_release) as listener:
+        #     listener.join()
+
 
         #### Make it rain rubber ducks #############################
         # if frameN/env.SIM_FREQ>5 and frameN%10==0 and frameN/env.SIM_FREQ<10: p.loadURDF("duck_vhacd.urdf", [0+random.gauss(0, 0.3),-0.5+random.gauss(0, 0.3),3], p.getQuaternionFromEuler([random.randint(0,360),random.randint(0,360),random.randint(0,360)]), physicsClientId=PYB_CLIENT)
@@ -145,46 +191,53 @@ if __name__ == "__main__":
         #### Step the simulation ###################################
         obs, reward, done, info = env.step(action)
 
+
+
         #### Compute control at the desired frequency ##############
-        if i%CTRL_EVERY_N_STEPS == 0:
+        # if i%CTRL_EVERY_N_STEPS == 0:
 
-            #### Compute control for the current way point #############
-            for j in range(ARGS.num_drones):
-                if j == 0:
-                    print("position", j, wp_counters[j], TARGET_POS[wp_counters[j], 0:2], INIT_XYZS[j, 2])
+        #### Compute control for the current way point #############
+        for j in range(ARGS.num_drones):
+            np.hstack([TARGET_POS[wp_counters[j], 0:2], INIT_XYZS[j, 2]])
+            action[str(j)], _, _ = ctrl[j].computeControlFromState(control_timestep=CTRL_EVERY_N_STEPS*env.TIMESTEP,
+                                                                   state=obs[str(j)]["state"],
+                                                                   # target_pos=np.hstack([TARGET_POS[wp_counters[j], 0:2], INIT_XYZS[j, 2]]),
+                                                                   target_pos=move_pos,
+                                                                   target_vel=move_vel
+                                                                   # target_pos=INIT_XYZS[j, :] + TARGET_POS[wp_counters[j], :],
+                                                                   # target_rpy=INIT_RPYS[j, :]
+                                                                   )
+            if obs[str(j)]["state"][2] < 0.1:
+                print("Drone crashed")
+            else:
+                print("velocity", obs[str(j)]["state"][10:13])
 
-                action[str(j)], _, _ = ctrl[j].computeControlFromState(control_timestep=CTRL_EVERY_N_STEPS*env.TIMESTEP,
-                                                                       state=obs[str(j)]["state"],
-                                                                       target_pos=np.hstack([TARGET_POS[wp_counters[j], 0:2], INIT_XYZS[j, 2]]),
-                                                                       # target_pos=INIT_XYZS[j, :] + TARGET_POS[wp_counters[j], :],
-                                                                       target_rpy=INIT_RPYS[j, :]
-                                                                       )
-
-            #### Go to the next way point and loop #####################
-            for j in range(ARGS.num_drones):
-                wp_counters[j] = wp_counters[j] + 1 if wp_counters[j] < (NUM_WP-1) else 0
+        #### Go to the next way point and loop #####################
+        for j in range(ARGS.num_drones):
+            wp_counters[j] = wp_counters[j] + 1 if wp_counters[j] < (NUM_WP-1) else 0
 
         #### Log the simulation ####################################
-        for j in range(ARGS.num_drones):
-            logger.log(drone=j,
-                       timestamp=i/env.SIM_FREQ,
-                       state= obs[str(j)]["state"],
-                       control=np.hstack([TARGET_POS[wp_counters[j], 0:2], INIT_XYZS[j, 2], INIT_RPYS[j, :], np.zeros(6)])
-                       # control=np.hstack([INIT_XYZS[j, :]+TARGET_POS[wp_counters[j], :], INIT_RPYS[j, :], np.zeros(6)])
-                       )
+        # for j in range(ARGS.num_drones):
+        #     logger.log(drone=j,
+        #                timestamp=i/env.SIM_FREQ,
+        #                state= obs[str(j)]["state"],
+        #                control=np.hstack([TARGET_POS[wp_counters[j], 0:2], INIT_XYZS[j, 2], INIT_RPYS[j, :], np.zeros(6)])
+        #                # control=np.hstack([INIT_XYZS[j, :]+TARGET_POS[wp_counters[j], :], INIT_RPYS[j, :], np.zeros(6)])
+        #                )
 
         #### Printout ##############################################
-        if i%env.SIM_FREQ == 0:
-            env.render()
-            #### Print matrices with the images captured by each drone #
-            if ARGS.vision:
-                for j in range(ARGS.num_drones):
-                    print(obs[str(j)]["rgb"].shape, np.average(obs[str(j)]["rgb"]),
-                          obs[str(j)]["dep"].shape, np.average(obs[str(j)]["dep"]),
-                          obs[str(j)]["seg"].shape, np.average(obs[str(j)]["seg"])
-                          )
+        # if i%env.SIM_FREQ == 0:
+        #     env.render()
+        #     #### Print matrices with the images captured by each drone #
+        #     if ARGS.vision:
+        #         for j in range(ARGS.num_drones):
+        #             print(obs[str(j)]["rgb"].shape, np.average(obs[str(j)]["rgb"]),
+        #                   obs[str(j)]["dep"].shape, np.average(obs[str(j)]["dep"]),
+        #                   obs[str(j)]["seg"].shape, np.average(obs[str(j)]["seg"])
+        #                   )
 
         #### Sync the simulation ###################################
+        i += AGGR_PHY_STEPS
         if ARGS.gui:
             sync(i, START, env.TIMESTEP)
 

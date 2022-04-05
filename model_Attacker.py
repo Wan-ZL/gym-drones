@@ -7,7 +7,7 @@ class attacker_model(player_model):
     def __init__(self, system):
         player_model.__init__(self, system)
         # randomly set to target area when create
-        self.xyz = np.array([3,3,0]) #np.array([random.randrange(1,system.map_cell_number+1), random.randrange(1,system.map_cell_number+1), 0])
+        self.xyz = np.array([system.map_size ,system.map_size,0]) #np.array([random.randrange(1,system.map_cell_number+1), random.randrange(1,system.map_cell_number+1), 0])
         self.obs_sig_dict = defaultdict(int)      # key is drone ID, value is observed signal level
         self.S_target_dict = defaultdict(list)
         self.observe()                  # observe environment and add value to 'obs_sig_dict' and 'S_target_dict'
@@ -43,19 +43,24 @@ class attacker_model(player_model):
         #     20 < x: -1
         # }
 
-        for MD in self.system.MD_set:
+        distance_dict = {}
+        for MD in self.system.MD_mission_set:   # only consider MD in mission and not crashed
             distance = self.system.calc_distance(self.xyz, MD.xyz_temp)
+            distance_dict[MD.ID] = distance
             obs_signal = self.system.observed_signal(MD.signal, distance)
             self.obs_sig_dict[MD.ID] = obs_signal
             strategy_index = self.signal2strategy(obs_signal)
             self.S_target_dict[strategy_index] = self.S_target_dict[strategy_index] + [MD]
-        for HD in self.system.HD_set:         # we consider crashed drone here
+        for HD in self.system.HD_mission_set:         # we consider crashed drone here
             distance = self.system.calc_distance(self.xyz, HD.xyz_temp)
+            distance_dict[HD.ID] = distance
             obs_signal = self.system.observed_signal(HD.signal, distance)
+            self.obs_sig_dict[HD.ID] = obs_signal
             strategy_index = self.signal2strategy(obs_signal)
             self.S_target_dict[strategy_index] = self.S_target_dict[strategy_index] + [HD]
 
         print("attacker observed:", self.obs_sig_dict)
+        print("attacker obs distance:", distance_dict)      # TODO: check if distance-signal function are correct
 
     def impact(self):
         ai = np.ones((self.num_att_stra, self.num_def_stra), dtype=float) / (self.num_att_stra * self.num_def_stra)
