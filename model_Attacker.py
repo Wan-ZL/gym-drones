@@ -7,7 +7,7 @@ class attacker_model(player_model):
     def __init__(self, system):
         player_model.__init__(self, system)
         # randomly set to target area when create
-        self.xyz = np.array([system.map_size ,system.map_size,0]) #np.array([random.randrange(1,system.map_cell_number+1), random.randrange(1,system.map_cell_number+1), 0])
+        self.xyz = np.array([system.map_size-system.cell_size ,system.map_size-system.cell_size, 0]) #np.array([random.randrange(1,system.map_cell_number+1), random.randrange(1,system.map_cell_number+1), 0])
         self.obs_sig_dict = defaultdict(int)      # key is drone ID, value is observed signal level
         self.S_target_dict = defaultdict(list)
         self.observe()                  # observe environment and add value to 'obs_sig_dict' and 'S_target_dict'
@@ -16,12 +16,12 @@ class attacker_model(player_model):
         self.num_def_stra = 9                    # number o f defender strategy
         self.success_record = np.zeros((system.num_MD + system.num_HD, self.num_def_stra))  # row drone ID, column: def_stra
         self.failure_record = np.zeros((system.num_MD + system.num_HD, self.num_def_stra))
-        self.strategy = 9                       # attack threshold range (1,10)
+        self.strategy = 9                       # index range (0,9) maps to attack strategy range (1,10)
         self.strategy2signal_set = [(-100,-98.1), (-98.1,-96.1), (-96.1,-93.8), (-93.8,-91.1), (-91.1,-87.9), (-87.9,-84.0), (-84.0,-79.0), (-79.0,-72.0), (-72.0,-60), (-60,20)]
         # condition edit in 'def observe()'. It convert signal strength to strategy index
         self.target_set = []
         self.epsilon = 0.5                      # variable used in determine target range
-        self.attack_success_prob = 0.0          # attack success rate of each attack on each drone
+        self.attack_success_prob = 0.1          # attack success rate of each attack on each drone
 
     def signal2strategy(self, obs_signal):
         conditions = lambda x: {
@@ -84,9 +84,10 @@ class attacker_model(player_model):
         ai = ai/max_set
         return ai
 
-    def select_strategy(self):
+
+    def select_strategy(self, new_strategy):
         # ai = self.impact()
-        self.strategy = 9
+        self.strategy = 8
         pass
 
     def action(self):

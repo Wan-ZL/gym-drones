@@ -324,7 +324,6 @@ if __name__ == "__main__":
             # for HD in HD_set:
             #     Desti_XYZ[HD.ID+num_MD] = HD.xyz
 
-            # TODO: Use order: MD->HD->DS->AS. algorithm 1: HD P^H_r default as 5
             # Attacker
             attacker.observe()
             attacker.select_strategy()

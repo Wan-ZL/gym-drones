@@ -12,8 +12,8 @@ class player_model:
     def update_location(self, x_axis, y_axis, z_axis):
         self.xyz = (x_axis, y_axis, z_axis)
 
-    def select_strategy(self):
-        self.strategy = random.randint(self.strategy_index_start, self.strategy_index_end)
+    def select_strategy(self, new_strategy):
+        self.strategy = int(new_strategy)
 
     def action(self):
         pass

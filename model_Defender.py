@@ -23,10 +23,10 @@ class defender_model(player_model):
         self.pre_alive_MD_num = self.system.num_MD
         # since we make HD move before defender select strategy, we use DS=5 as default strategy that control P^H_r
         self.p_H_r = self.system.signal_range(self.strategy2signal_set[5])  # use DS=5 as default
-        self.MD_requirement = 0     # TODO: track how many MD is required in mission
+        self.MD_requirement = 0
 
-    def select_strategy(self):
-        self.strategy = 0
+    # def select_strategy(self, new_strategy):
+    #     self.strategy = 9
 
     # get maximum drone required, so that defender only recalculate trajectory when alive (exclude MD in GCS) drone is less than requirement
     def update_drone_number_required(self):
@@ -56,7 +56,6 @@ class defender_model(player_model):
         for MD in self.system.MD_set:
             if MD.crashed:
                 continue
-            # TODO: only assign to new destination if the current location scan finished
             # assign new destination if the current destination scan complete
             map_x_index = round(MD.xyz[0]-1)        # minus 1 for ignoring GCS
             map_y_index = round(MD.xyz[1]-1)        # minus 1 for ignoring GCS
@@ -71,7 +70,8 @@ class defender_model(player_model):
                     pass
                     # print("MD no trajectory plan:", MD.ID)
             else:
-                print(f"MD {MD.ID} scan not complete ({self.system.scan_map[map_x_index, map_y_index], MD.xyz[0], MD.xyz[0]}), no new destination")
+                pass
+                # print(f"MD {MD.ID} scan not complete ({self.system.scan_map[map_x_index, map_y_index], MD.xyz[0], MD.xyz[0]}), no new destination")
 
     # for MD update next destination (designed for the first round without checking scan_map)
     def update_MD_next_destination_no_scanMap(self):

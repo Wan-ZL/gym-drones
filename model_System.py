@@ -10,7 +10,7 @@ class system_model:
         self.mission_success = False
         self.mission_max_status = self.mission_Not_end
         self.mission_duration = 0  # T_M in paper
-        self.mission_max_duration = 200  # T^{max}_m in paper
+        self.mission_max_duration = 200  # T_vision^{max}_m in paper
         self.map_cell_number = 5    # number of cell each side
         self.cell_size = 100  # in meter     (left bottom point of cell represents the coordinate of cell
         self.map_size = self.map_cell_number * self.cell_size   # in meter
@@ -183,7 +183,8 @@ class system_model:
             # mission end if: mission time limit meet
             self.mission_Not_end -= 1
         else:
-            self.print_drones_battery()
+            pass
+            # self.print_drones_battery()
 
         # check if mission end successfully
         if not self.mission_Not_end:
