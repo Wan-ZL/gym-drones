@@ -28,6 +28,9 @@ class defender_model(player_model):
     # def select_strategy(self, new_strategy):
     #     self.strategy = 9
 
+    def set_strategy(self, new_strategy):
+        self.strategy = new_strategy
+
     # get maximum drone required, so that defender only recalculate trajectory when alive (exclude MD in GCS) drone is less than requirement
     def update_drone_number_required(self):
         counter = 0
