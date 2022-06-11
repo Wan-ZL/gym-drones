@@ -7,7 +7,7 @@ class attacker_model(player_model):
     def __init__(self, system):
         player_model.__init__(self, system)
         # randomly set to target area when create
-        self.xyz = np.array([system.map_size-system.cell_size ,system.map_size-system.cell_size, 0]) #np.array([random.randrange(1,system.map_cell_number+1), random.randrange(1,system.map_cell_number+1), 0])
+        self.xyz = np.array([int(system.map_size/2) ,int(system.map_size/2), 0]) #np.array([random.randrange(1,system.map_cell_number+1), random.randrange(1,system.map_cell_number+1), 0])
         self.obs_sig_dict = defaultdict(int)      # key is drone ID, value is observed signal level
         self.S_target_dict = defaultdict(list)
         self.observe()                  # observe environment and add value to 'obs_sig_dict' and 'S_target_dict'
@@ -21,7 +21,7 @@ class attacker_model(player_model):
         # condition edit in 'def observe()'. It convert signal strength to strategy index
         self.target_set = []
         self.epsilon = 0.5                      # variable used in determine target range
-        self.attack_success_prob = 0.1          # attack success rate of each attack on each drone
+        self.attack_success_prob = 0.2          # attack success rate of each attack on each drone
 
     def signal2strategy(self, obs_signal):
         conditions = lambda x: {
@@ -59,13 +59,13 @@ class attacker_model(player_model):
             strategy_index = self.signal2strategy(obs_signal)
             self.S_target_dict[strategy_index] = self.S_target_dict[strategy_index] + [HD]
 
-        print("attacker observed:", self.obs_sig_dict)
-        print("attacker obs distance:", distance_dict)      # TODO: check if distance-signal function are correct
+        if self.print: print("attacker observed:", self.obs_sig_dict)
+        if self.print: print("attacker obs distance:", distance_dict)      # TODO: check if distance-signal function are correct
 
     def impact(self):
         ai = np.ones((self.num_att_stra, self.num_def_stra), dtype=float) / (self.num_att_stra * self.num_def_stra)
         max_set = 0
-        print("S_target_dict", self.S_target_dict)
+        if self.print: print("S_target_dict", self.S_target_dict)
         for att_stra in range(self.num_att_stra):
             # find denominator
             if len(self.S_target_dict[att_stra]) > max_set:
@@ -78,26 +78,24 @@ class attacker_model(player_model):
                     if self.success_record[drone.ID, def_stra]:
                         ai[att_stra, def_stra] += (self.success_record[drone.ID, def_stra]/ (self.success_record[drone.ID, def_stra] + self.failure_record[drone.ID, def_stra]))
 
-        print("ai", ai)
-        print("max_set", max_set)
+        if self.print: print("ai", ai)
+        if self.print: print("max_set", max_set)
 
         ai = ai/max_set
         return ai
 
 
-    def select_strategy(self, new_strategy):
-        # ai = self.impact()
-        self.strategy = 8
-        pass
+    # def select_strategy(self, new_strategy):
+    #     self.strategy = 8
 
     def action(self):
-        print("attacker strategy:", self.strategy, "signal", self.strategy2signal_set[self.strategy])
+        if self.print: print("attacker strategy:", self.strategy, "signal", self.strategy2signal_set[self.strategy])
         target_set = self.S_target_dict[self.strategy]
         for drone in target_set:
-            print("attacking", drone.ID, drone.type)
+            if self.print: print("attacking", drone.ID, drone.type)
             # only attack not crashed drone
             if random.uniform(0,1) < self.attack_success_prob:
-                print("attack success:", drone)
+                if self.print: print("attack success:", drone)
                 drone.xyz[2] = 0
                 drone.xyz_temp[2] = 0
                 drone.crashed = True

@@ -27,7 +27,7 @@ plt.ion()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 Transition = namedtuple('Transition',
-                        ('state', 'action', 'next_state', 'reward'))
+                        ('state', 'pybullet_action', 'next_state', 'reward'))
 
 
 class ReplayMemory(object):
@@ -65,7 +65,7 @@ class DQN(nn.Module):
         linear_input_size = convw * convh * 32
         self.head = nn.Linear(linear_input_size, outputs)
 
-    # Called with either one element to determine next action, or a batch
+    # Called with either one element to determine next pybullet_action, or a batch
     # during optimization. Returns tensor([[left0exp,right0exp]...]).
     def forward(self, x):
         x = x.to(device)
@@ -130,7 +130,7 @@ TARGET_UPDATE = 10
 init_screen = get_screen()
 _, _, screen_height, screen_width = init_screen.shape
 
-# Get number of actions from gym action space
+# Get number of actions from gym pybullet_action space
 n_actions = env.action_space.n
 
 policy_net = DQN(screen_height, screen_width, n_actions).to(device)
@@ -155,7 +155,7 @@ def select_action(state):
         with torch.no_grad():
             # t.max(1) will return largest column value of each row.
             # second column on max result is index of where max element was
-            # found, so we pick action with the larger expected reward.
+            # found, so we pick pybullet_action with the larger expected reward.
             return policy_net(state).max(1)[1].view(1, 1)
     else:
         return torch.tensor([[random.randrange(n_actions)]], device=device, dtype=torch.long)
@@ -236,7 +236,7 @@ for i_episode in range(num_episodes):
     current_screen = get_screen()
     state = current_screen - last_screen
     for t in count():
-        # Select and perform an action
+        # Select and perform an pybullet_action
         action = select_action(state)
         _, reward, done, _ = env.step(action.item())
         reward = torch.tensor([reward], device=device)

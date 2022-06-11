@@ -25,7 +25,6 @@ from gym_pybullet_drones.envs.BaseAviary import DroneModel, Physics
 from gym_pybullet_drones.envs.CtrlAviary import CtrlAviary
 from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl
 from gym_pybullet_drones.utils.utils import sync, str2bool
-from Gym_HoneyDrone import HoneyDrone
 
 def updateTempLoca(drone_set, control_freq_hz: int):
     for drone in drone_set:
@@ -107,20 +106,6 @@ if __name__ == "__main__":
                      user_debug_gui=ARGS.user_debug_gui
                      )
 
-    # custom gym-like environment
-    # env = HoneyDrone(drone_model=ARGS.drone,
-    #                  num_drones=ARGS.num_drones,
-    #                  initial_xyzs=INIT_XYZS,
-    #                  initial_rpys=INIT_RPYS,
-    #                  physics=ARGS.physics,
-    #                  neighbourhood_radius=10,
-    #                  freq=ARGS.simulation_freq_hz,
-    #                  aggregate_phy_steps=AGGR_PHY_STEPS,
-    #                  gui=ARGS.gui,
-    #                  record=ARGS.record_video,
-    #                  obstacles=ARGS.obstacles,
-    #                  user_debug_gui=ARGS.user_debug_gui
-    #                  )
 
     PYB_CLIENT = env.getPyBulletClient()
     PERIOD = 10
@@ -174,7 +159,7 @@ if __name__ == "__main__":
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # ==== Pytorch: Replay Memory ====
-        Transition = namedtuple('Transition', ('state', 'action', 'next_state', 'reward'))
+        Transition = namedtuple('Transition', ('state', 'pybullet_action', 'next_state', 'reward'))
 
         class ReplayMemory(object):
             def __init__(self, capacity):
@@ -225,7 +210,7 @@ if __name__ == "__main__":
             #     linear_input_size = convw * convh * 32
             #     self.head = nn.Linear(linear_input_size, outputs)
             #
-            # # Called with either one element to determine next action, or a batch
+            # # Called with either one element to determine next pybullet_action, or a batch
             # # during optimization. Returns tensor([[left0exp,right0exp]...]).
             # def forward(self, x):
             #     x = x.to(device)
@@ -280,7 +265,7 @@ if __name__ == "__main__":
             system.Drone_state_update()
 
             # show real time scan
-            # print("map \n", scan_map.round(1))
+            # print_debug("map \n", scan_map.round(1))
             print("map \n", system.scan_cell_map)
 
             # for MD update next destination
@@ -324,7 +309,7 @@ if __name__ == "__main__":
         # energy consumption of MD and HD
         system.battery_consume()
 
-        # execute action
+        # execute pybullet_action
         for MD in system.MD_set:
             if MD.crashed:
                 continue

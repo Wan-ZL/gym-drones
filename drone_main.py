@@ -18,6 +18,8 @@ from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl
 from gym_pybullet_drones.control.SimplePIDControl import SimplePIDControl
 from gym_pybullet_drones.utils.Logger import Logger
 from gym_pybullet_drones.utils.utils import sync, str2bool
+from multiprocessing import cpu_count
+from multiprocessing import Process
 
 
 # Note: adjust debug camera target point by edit resetDebugVisualizerCamera in 'BaseAviary.py'
@@ -46,8 +48,17 @@ def drones_distance(drone_x_location, drone_y_location):
     return np.sqrt(np.sum(distance_squre))
 
 
+def control_MD(MD, ctrl, CTRL_EVERY_N_STEPS, env, obs):
+    if MD.crashed:
+        return
+    action[str(MD.ID)], _, _ = ctrl[MD.ID].computeControlFromState(control_timestep=CTRL_EVERY_N_STEPS * env.TIMESTEP,
+                                                                   state=obs[str(MD.ID)]["state"],
+                                                                   target_pos=MD.xyz_temp)
+    print("calc finish")
 
 if __name__ == "__main__":
+    start_time = time.time()
+
     # create model class
     system = system_model()
     defender = defender_model(system)
@@ -90,9 +101,9 @@ if __name__ == "__main__":
     parser.add_argument('--user_debug_gui',     default=False,      type=str2bool,      help='Whether to add debug lines and parameters to the GUI (default: False)', metavar='')
     parser.add_argument('--aggregate',          default=True,       type=str2bool,      help='Whether to aggregate physics steps (default: True)', metavar='')
     parser.add_argument('--obstacles',          default=False,      type=str2bool,      help='Whether to add obstacles to the environment (default: False)', metavar='')
-    parser.add_argument('--simulation_freq_hz', default=240,        type=int,           help='Simulation frequency in Hz (default: 240)', metavar='')
+    parser.add_argument('--simulation_freq_hz', default=120,        type=int,           help='Simulation frequency in Hz (default: 240)', metavar='')
     parser.add_argument('--control_freq_hz',    default=48,         type=int,           help='Control frequency in Hz (default: 48)', metavar='')
-    parser.add_argument('--duration_sec',       default=12,         type=int,           help='Duration of the simulation in seconds (default: 5)', metavar='')
+    parser.add_argument('--duration_sec',       default=5,         type=int,           help='Duration of the simulation in seconds (default: 5)', metavar='')
     ARGS = parser.parse_args()
 
 
@@ -210,8 +221,8 @@ if __name__ == "__main__":
     #     HD_locations[HD.ID][2] = z_mutiplier * (HD.ID - num_MD) + z_range_start_HD
 
     # create attacker
-    # print(os.getcwd())
-    # print(os.path.join(os.getcwd(),"urdf_model/duck_vhacd.urdf"))
+    # print_debug(os.getcwd())
+    # print_debug(os.path.join(os.getcwd(),"urdf_model/duck_vhacd.urdf"))
     p.loadURDF("duck_vhacd.urdf", attacker.xyz, physicsClientId=PYB_CLIENT)
 
     # initial env
@@ -233,7 +244,7 @@ if __name__ == "__main__":
             system.Drone_state_update()
 
             # show real time scan
-            # print("map \n", scan_map.round(1))
+            # print_debug("map \n", scan_map.round(1))
             print("map \n", system.scan_cell_map)
 
             # for MD update next destination
@@ -250,15 +261,15 @@ if __name__ == "__main__":
             #     if MD_trajectory[MD.ID].shape[0] > 1:
             #         MD_trajectory[MD.ID] = MD_trajectory[MD.ID][1:, :]
             #     else:
-            #         print("MD arrived:", MD.ID)
+            #         print_debug("MD arrived:", MD.ID)
 
 
             # for i in range(num_MD):
-            #     # print(MD_trajectory[i])
+            #     # print_debug(MD_trajectory[i])
             #     Desti_XYZ[i] = MD_trajectory[i][0]
             #     if MD_trajectory[i].shape[0] > 1:
             #         MD_trajectory[i] = MD_trajectory[i][1:, :]
-                # print("Desti_XYZ: ", i, Desti_XYZ[i])
+                # print_debug("Desti_XYZ: ", i, Desti_XYZ[i])
 
 
             # avoid HD crash when creating
@@ -315,10 +326,10 @@ if __name__ == "__main__":
             #         N_l_H_subset = N_l_H_set[:tao_upper]
             #         L_MD_set = np.delete(L_MD_set, np.searchsorted(L_MD_set,N_l_H_subset))     # Remove protected MDs from set L_MD_set
             #         S_set_HD[HD.ID] = N_l_H_subset  # Add deployed HD to set S_set_HD
-            #     # print("L_MD_set", L_MD_set)
-            # print("HD protecting", S_set_HD)
+            #     # print_debug("L_MD_set", L_MD_set)
+            # print_debug("HD protecting", S_set_HD)
 
-            # print("Desti_XYZ", Desti_XYZ)
+            # print_debug("Desti_XYZ", Desti_XYZ)
             # for MD in MD_set:
             #     Desti_XYZ[MD.ID] = MD.xyz
             # for HD in HD_set:
@@ -326,11 +337,11 @@ if __name__ == "__main__":
 
             # Attacker
             attacker.observe()
-            attacker.select_strategy()
+            attacker.select_strategy(8)
             attacker.action()
 
             # Defender
-            defender.select_strategy()
+            defender.select_strategy(8)
             defender.action()
 
 
@@ -348,22 +359,24 @@ if __name__ == "__main__":
         # TARG_XYZS = np.array([[R * np.cos((frameN / 6) * 2 * np.pi + np.pi / 2), R * np.sin((frameN / 6) * 2 * np.pi + np.pi / 2) - R,
         #                        Tar_H + frameN * H_STEP] for frameN in range(ARGS.num_drones)])
 
-        # action = {str(frameN): np.array([1, 0, 0, 0]) for frameN in range(ARGS.num_drones)}
+        # pybullet_action = {str(frameN): np.array([1, 0, 0, 0]) for frameN in range(ARGS.num_drones)}
         # obs, reward, done, info = env.step(env.action_space.sample())
+
         obs, reward, done, info = env.step(action)
+
 
         # count cell scan by frame
         # for MD in MD_set:
         #     if MD.crashed:
         #         continue
         # # for i in range(num_MD):
-        #     # print("obs[str(i)][state]", obs[str(i)]["state"][0:3].round(1))
+        #     # print_debug("obs[str(i)][state]", obs[str(i)]["state"][0:3].round(1))
         #     cell_x, cell_y, height_z = obs[str(MD.ID)]["state"][0:3]
         #
         #     if height_z < 0.1:
         #         MD.crashed = True
-        #         print("Drone crashed, ID:", MD.ID)
-        #         print("cell_x, cell_y, height_z", cell_x, cell_y, height_z)
+        #         print_debug("Drone crashed, ID:", MD.ID)
+        #         print_debug("cell_x, cell_y, height_z", cell_x, cell_y, height_z)
         #
         #     map_x_index = int(cell_x + 0.5 + map_border)
         #     map_y_index = int(cell_y + 0.5 + map_border)
@@ -372,8 +385,8 @@ if __name__ == "__main__":
         #         scan_map[map_x_index, map_y_index] += 0.01
         #         system.update_scan(map_x_index, map_y_index, 0.01)
         #     else:
-        #         print("ID, cell_x, cell_y, height_z", MD.ID, cell_x, cell_y, height_z)
-        #         print("map_x_index_const, map_y_index_const", MD.ID, map_x_index, map_y_index)
+        #         print_debug("ID, cell_x, cell_y, height_z", MD.ID, cell_x, cell_y, height_z)
+        #         print_debug("map_x_index_const, map_y_index_const", MD.ID, map_x_index, map_y_index)
 
         # scan count, and check if crashed
         system.MD_environment_interaction(obs)
@@ -382,7 +395,46 @@ if __name__ == "__main__":
         # energy consumption of MD and HD
         system.battery_consume()
 
-        # execute action
+        # execute pybullet_action
+
+        # solution 1
+        # import concurrent.futures
+        # with concurrent.futures.ProcessPoolExecutor() as executor:
+        #     for MD in system.MD_set:
+        #         future = executor.submit(control_MD, MD, ctrl, CTRL_EVERY_N_STEPS, env, obs)
+
+        # solution 2
+        def parall_MD_2(MD, ctrl):
+            if MD.crashed:
+                return
+            action[str(MD.ID)], _, _ = ctrl[MD.ID].computeControlFromState(control_timestep=CTRL_EVERY_N_STEPS * env.TIMESTEP,
+                                                                   state=obs[str(MD.ID)]["state"],
+                                                                   target_pos=MD.xyz_temp)
+
+
+        # control_MD(MD, ctrl, CTRL_EVERY_N_STEPS, env, obs)
+        # for MD in system.MD_set:
+        #     t = Process(target=control_MD, args=[MD, ctrl, CTRL_EVERY_N_STEPS, env, obs])
+        #     t.start()
+        def loop(cpu, string):
+            for i in range(10000):
+                print(f"cpu {cpu}: {i}\n" + string)
+
+
+        # if __name__ == '__main__':
+        #     threads = []
+        #     for i in range(cpu_count()-2):
+        #         t = Process(target=loop, args=[i, "hahaha"])
+        #         t.start()
+        # quit()
+        # from multiprocessing.dummy import Pool as ThreadPool
+        # pool = ThreadPool()
+        # pool.map(parall_MD_2, system.MD_set)
+        # pool.close()
+        # pool.join()
+
+
+
         for MD in system.MD_set:
             if MD.crashed:
                 continue
@@ -394,22 +446,22 @@ if __name__ == "__main__":
                                                                    state=obs[str(HD.ID)]["state"],
                                                                    target_pos=HD.xyz_temp)
         # for i in range(ARGS.num_drones):
-        #     action[str(i)], _, _ = ctrl[i].computeControlFromState(control_timestep=CTRL_EVERY_N_STEPS * env.TIMESTEP,
+        #     pybullet_action[str(i)], _, _ = ctrl[i].computeControlFromState(control_timestep=CTRL_EVERY_N_STEPS * env.TIMESTEP,
         #                                                            state=obs[str(i)]["state"],
         #                                                            target_pos=TARG_XYZS[i])
-            # print(i)
-            # print("TARG_XYZS", TARG_XYZS[i])
-            # print("drone pos:", obs[str(i)]["state"][0:3])
-            # action[str(i)], _, _ = ctrl[i].computeControlFromState(control_timestep=CTRL_EVERY_N_STEPS * env.TIMESTEP,
+            # print_debug(i)
+            # print_debug("TARG_XYZS", TARG_XYZS[i])
+            # print_debug("drone pos:", obs[str(i)]["state"][0:3])
+            # pybullet_action[str(i)], _, _ = ctrl[i].computeControlFromState(control_timestep=CTRL_EVERY_N_STEPS * env.TIMESTEP,
             #                                                        state=obs[str(i)]["state"],
             #                                                        target_pos=TARG_XYZS,
             #                                                        # target_pos=INIT_XYZS[j, :] + TARGET_POS[wp_counters[j], :],
             #                                                        target_rpy=INIT_RPYS[i, :]
             #                                                        )
-            # action[str(i)], _, _ = ctrl[i].computeControlFromState(control_timestep = CTRL_EVERY_N_STEPS * env.TIMESTEP,
+            # pybullet_action[str(i)], _, _ = ctrl[i].computeControlFromState(control_timestep = CTRL_EVERY_N_STEPS * env.TIMESTEP,
             #                                                        state = obs[str(i)]["state"],
             #                                                        target_pos = TARG_XYZS[i])
-            # action[str(i)], _, _ = ctrl[i].computeControlFromState(control_timestep=CTRL_EVERY_N_STEPS * env.TIMESTEP,
+            # pybullet_action[str(i)], _, _ = ctrl[i].computeControlFromState(control_timestep=CTRL_EVERY_N_STEPS * env.TIMESTEP,
             #                                                        state=obs[str(i)]["state"],
             #                                                        target_pos=np.hstack([TARGET_POS[wp_counters[i], 0:2], INIT_XYZS[i, 2]]),
             #                                                        # target_pos=INIT_XYZS[j, :] + TARGET_POS[wp_counters[j], :],
@@ -428,6 +480,7 @@ if __name__ == "__main__":
     # Game End
     # system.print_MDs()
     # system.print_HDs()
+    print("--- game duration: %s seconds ---" % round(time.time() - start_time, 1))
 
 
 

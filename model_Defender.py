@@ -2,6 +2,7 @@ from or_tool_trajectory import MD_path_plan_main
 # from or_tools_test import MD_path_plan_main
 from model_player import player_model
 import numpy as np
+import random
 
 class defender_model(player_model):
     def __init__(self, system):
@@ -25,11 +26,9 @@ class defender_model(player_model):
         self.p_H_r = self.system.signal_range(self.strategy2signal_set[5])  # use DS=5 as default
         self.MD_requirement = 0
 
-    # def select_strategy(self, new_strategy):
-    #     self.strategy = 9
+    def select_strategy(self, new_strategy):
+        self.strategy = int(new_strategy)
 
-    def set_strategy(self, new_strategy):
-        self.strategy = new_strategy
 
     # get maximum drone required, so that defender only recalculate trajectory when alive (exclude MD in GCS) drone is less than requirement
     def update_drone_number_required(self):
@@ -37,7 +36,7 @@ class defender_model(player_model):
         for id in self.MD_trajectory:
             if len(self.MD_trajectory[id]) > 2:
                 counter += 1
-        print("maximum drone required:", counter)
+        if self.print: print("maximum drone required:", counter)
         self.drone_number_required = counter
         return counter
 
@@ -52,7 +51,7 @@ class defender_model(player_model):
         for MD in self.system.MD_set:
             MD.signal = MD_signal
             MD.signal_radius = MD_signal_radius
-        print("defender strategy:", self.strategy, ", HD_signal:", HD_signal, "dBm, HD_signal_radius:", HD_signal_radius,"m")
+        if self.print: print("defender strategy:", self.strategy, ", HD_signal:", HD_signal, "dBm, HD_signal_radius:", HD_signal_radius,"m")
 
     # for MD update next destination
     def update_MD_next_destination(self):
@@ -71,10 +70,10 @@ class defender_model(player_model):
                     self.MD_trajectory[MD.ID] = self.MD_trajectory[MD.ID][1:, :]
                 else:
                     pass
-                    # print("MD no trajectory plan:", MD.ID)
+                    # print_debug("MD no trajectory plan:", MD.ID)
             else:
                 pass
-                # print(f"MD {MD.ID} scan not complete ({self.system.scan_map[map_x_index, map_y_index], MD.xyz[0], MD.xyz[0]}), no new destination")
+                # print_debug(f"MD {MD.ID} scan not complete ({self.system.scan_map[map_x_index, map_y_index], MD.xyz[0], MD.xyz[0]}), no new destination")
 
     # for MD update next destination (designed for the first round without checking scan_map)
     def update_MD_next_destination_no_scanMap(self):
@@ -87,7 +86,7 @@ class defender_model(player_model):
             if self.MD_trajectory[MD.ID].shape[0] > 1:
                 self.MD_trajectory[MD.ID] = self.MD_trajectory[MD.ID][1:, :]
             else:
-                print("MD arrived:", MD.ID)
+                if self.print: print("MD arrived:", MD.ID)
 
     # HD update next destination
     # Algorithm 1 in paper
@@ -144,8 +143,8 @@ class defender_model(player_model):
                 L_MD_set = np.delete(L_MD_set,
                                      np.searchsorted(L_MD_set, N_l_H_subset))  # Remove protected MDs from set L_MD_set
                 S_set_HD[HD.ID] = N_l_H_subset  # Add deployed HD to set S_set_HD
-            # print("L_MD_set", L_MD_set)
-        print("HD protecting", S_set_HD)
+            # print_debug("L_MD_set", L_MD_set)
+        if self.print: print("HD protecting", S_set_HD)
 
 
 
@@ -154,7 +153,7 @@ class defender_model(player_model):
 
         for id in range(self.system.num_MD + self.system.num_HD):
             res[id] = 1 + id * self.z_interval
-        print(res)
+        if self.print: print(res)
         return res
 
 
@@ -215,34 +214,36 @@ class defender_model(player_model):
 
         # check if no alive MD
         if len(alive_index_set) == 0:
-            print("\n No alive MD, Mission Fail \n")
+            print("\n Mission Fail \n")
+            self.system.mission_condition = 3
             self.system.mission_Not_end -= 2
         # check if new drone compromised
         elif len(alive_index_set) < self.pre_alive_MD_num:
-            print("detected MD compromised")
+            if self.print: print("detected MD compromised")
             self.system.recalc_trajectory = True
             self.pre_alive_MD_num = len(alive_index_set)
 
         # if need recalc trajectory, and mission not end
         if self.system.recalc_trajectory and self.system.mission_Not_end == self.system.mission_max_status:
             if len(alive_index_set) == 0:      # if no MD alive, mission fail
-                print("No Alive Mission Drone......")
+                if self.print: print("No Alive Mission Drone......")
                 self.system.mission_Not_end -= 2
                 print("\n Mission Fail :( \n")
-                print("scanned map:\n", self.system.scan_map)
+                self.system.mission_condition = 3
+                if self.print: print("scanned map:\n", self.system.scan_map)
                 self.system.print_MDs()
                 self.system.print_HDs()
                 return False
             else:
                 # MD on mission is less than required
                 if len(self.system.MD_mission_set) < self.drone_number_required:
-                    print("MD_mission_set size not enough", len(self.system.MD_mission_set))
-                    print("Calculating MD trajectory......")
+                    if self.print: print("MD_mission_set size not enough", len(self.system.MD_mission_set))
+                    if self.print: print("Calculating MD trajectory......")
                     self.MD_trajectory = MD_path_plan_main(alive_index_set, alive_posi_set, self.system.map_cell_number, self.system.cell_size, self.system.not_scanned_map())
                     # self.MD_trajectory_remove_head()      # remove this for testing
                     self.system.recalc_trajectory = False
                     self.update_drone_number_required()
-                    # print("MD_trajectory", self.MD_trajectory)
+                    # print_debug("MD_trajectory", self.MD_trajectory)
                     # quit()
                     self.MD_trajecotry_add_Z()
                     return True

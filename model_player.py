@@ -3,6 +3,7 @@ import random
 
 class player_model:
     def __init__(self, system):
+        self.print = False
         self.system = system  # save the pointer to system class
         self.xyz = [0, 0, 0]  # player's location
         self.strategy = 10

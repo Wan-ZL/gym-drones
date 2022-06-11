@@ -49,8 +49,8 @@ def create_data_model(map_cell_number, cell_size, locations_MD, num_vehicles, de
 
     # calculate distance
     # distance_set = np.zeros((cell_number, cell_number))
-    # # print('shape', distance_set.shape)
-    # # print("distance_set", distance_set)
+    # # print_debug('shape', distance_set.shape)
+    # # print_debug("distance_set", distance_set)
     # i_index = 0
     # for i_x, i_y in location_set:
     #     j_index = 0
@@ -101,7 +101,7 @@ def print_solution(data, manager, routing, solution, variable_precision, node2po
             index = solution.Value(routing.NextVar(index))
             route_distance += routing.GetArcCostForVehicle(
                 previous_index, index, vehicle_id)
-            # print("distance", manager.IndexToNode(index), manager.IndexToNode(previous_index), data['distance_matrix'][manager.IndexToNode(index)][manager.IndexToNode(previous_index)])
+            # print_debug("distance", manager.IndexToNode(index), manager.IndexToNode(previous_index), data['distance_matrix'][manager.IndexToNode(index)][manager.IndexToNode(previous_index)])
         node = manager.IndexToNode(index)
         plan_output += f' {node} {node2position[node]}\n'
         route_distance += routing.GetArcCostForVehicle(
@@ -149,7 +149,7 @@ def draw_map(data, manager, routing, solution):
 
 
     for vehicle_id in range(data['num_vehicles']):
-        # print("vehicle_id", vehicle_id)
+        # print_debug("vehicle_id", vehicle_id)
         # color = (random.random(), random.random(), random.random())
 
         index = routing.Start(vehicle_id)
@@ -157,8 +157,8 @@ def draw_map(data, manager, routing, solution):
 
         [i_x, i_y] = [None, None]
         while not routing.IsEnd(index):
-            # print("IndexToNode", manager.IndexToNode(index))
-            # print("[i_x, i_y]", [i_x, i_y])
+            # print_debug("IndexToNode", manager.IndexToNode(index))
+            # print_debug("[i_x, i_y]", [i_x, i_y])
             [j_x, j_y] = location_set[manager.IndexToNode(index)]
             if i_x is not None:
                 plt.arrow(i_x, i_y, j_x - i_x, j_y - i_y, width=0.05, color = colors_order[vehicle_id % colors_len], length_includes_head=True)
@@ -166,14 +166,14 @@ def draw_map(data, manager, routing, solution):
             previous_index = index
             index = solution.Value(routing.NextVar(index))
             route_distance += routing.GetArcCostForVehicle(previous_index, index, vehicle_id)
-        # print("IndexToNode", manager.IndexToNode(index))
-        # print("[i_x, i_y]", [i_x, i_y])
+        # print_debug("IndexToNode", manager.IndexToNode(index))
+        # print_debug("[i_x, i_y]", [i_x, i_y])
         [j_x, j_y] = location_set[manager.IndexToNode(index)]
         if i_x is not None:
             plt.arrow(i_x, i_y, j_x - i_x, j_y - i_y, width=0.05, color = colors_order[vehicle_id % colors_len], length_includes_head=True)
         plt.plot(j_x, j_y, 'ro')
-        # print(solution.Value(routing.NextVar(index)))
-        # print("route_distance", route_distance)
+        # print_debug(solution.Value(routing.NextVar(index)))
+        # print_debug("route_distance", route_distance)
 
     # plt.plot([0.5, 0.5], [0.5, 4.5], color='gray')
 
@@ -203,8 +203,9 @@ def generate_route_array(data, manager, routing, solution, indexs_MD):
 
 
 def MD_path_plan_main(indexs_MD, locations_MD, map_cell_number, cell_size, not_scanned_map):
+    print_traj = False
     """Entry point of the program."""
-    # print("locations_MD", locations_MD)
+    # print_debug("locations_MD", locations_MD)
     # map_cell_number = 5
     num_vehicles = len(locations_MD)  # vehicle/drone number
     depot = 0  # base station index
@@ -274,12 +275,12 @@ def MD_path_plan_main(indexs_MD, locations_MD, map_cell_number, cell_size, not_s
     start = time.time()
     solution = routing.SolveWithParameters(search_parameters)
     end = time.time()
-    print("\ntime spent:{:.2f}\n".format(end - start))
+    # print_debug("\ntime spent:{:.2f}\n".format(end - start))
 
     # Print solution on console.
     if solution:
-        print_solution(data, manager, routing, solution, variable_precision, node2position)
-        draw_map(data, manager, routing, solution)
+        if print_traj: print_solution(data, manager, routing, solution, variable_precision, node2position)
+        if print_traj: draw_map(data, manager, routing, solution)
     else:
         print('No solution found !')
 

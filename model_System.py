@@ -5,12 +5,15 @@ from model_HD import Honey_Drone
 
 class system_model:
     def __init__(self):
+        self.print = False
         self.update_freq = 500  # environment frame per round
         self.mission_Not_end = 2  # 2 means True, use 2 here to allow drone back to BaseStation in debug mode
         self.mission_success = False
         self.mission_max_status = self.mission_Not_end
-        self.mission_duration = 0  # T_M in paper
+        self.mission_duration = 0  # T_M in paper. unit: round
+        self.mission_duration_max = 100     # unit: round
         self.mission_max_duration = 200  # T_vision^{max}_m in paper
+        self.mission_condition = 0  # -1 means game not end, 0 means mission success, 1 means mission failed by unfinished scan, 2, failed by no time, 3. failed by no MD
         self.map_cell_number = 5    # number of cell each side
         self.cell_size = 100  # in meter     (left bottom point of cell represents the coordinate of cell
         self.map_size = self.map_cell_number * self.cell_size   # in meter
@@ -20,15 +23,39 @@ class system_model:
         self.scan_cell_map = self.scan_map[::self.cell_size, ::self.cell_size]
         self.min_scan_requirement = 5
         self.recalc_trajectory = False  # True: need recalculate trajectory. TODO: Recalc when charging to full.
-        self.num_MD = 10  # number of MD (in index, MD first then HD)
-        self.num_HD = 1  # number of HD
+        self.num_MD = 5  # number of MD (in index, MD first then HD)
+        self.num_HD = 3  # number of HD
         self.MD_dict = {}  # key is id, value is class detail
         self.HD_dict = {}
         self.MD_crashed_IDs = []  # includes MD crashed or crashed
         self.assign_HD()
         self.assign_MD()
-        # self.MD_set = self.get_alive_MD()
-        # self.HD_set = self.get_alive_HD()
+
+    # MD_set only contain MD that not crash
+    # TODO: Increase the hyperparameter for trial (AutoML)
+    # TODO: Create defender model (save)
+    # TODO: Create attacker model (save)
+    # TODO: add two models to environment
+
+
+    @property
+    def MD_set(self):
+        return [MD for MD in self.MD_dict.values() if not MD.crashed]
+
+    # set of MD in mission (not in GCS)
+    @property
+    def MD_mission_set(self):
+        return [MD for MD in self.MD_dict.values() if not MD.crashed and not MD.in_GCS]
+
+    # HD_set only contain MD that not crash
+    @property
+    def HD_set(self):
+        return [HD for HD in self.HD_dict.values() if not HD.crashed]
+
+    # set of HD in mission (not in GCS)
+    @property
+    def HD_mission_set(self):
+        return [HD for HD in self.HD_dict.values() if not HD.crashed and not HD.in_GCS]
 
     # distance between two drones. (Eq. \eqref(Eq: distance) in paper)
     def drones_distance(self, drone_x_location, drone_y_location):
@@ -59,25 +86,7 @@ class system_model:
         res = 10 ** ((original_signal + 100) / 40)
         return res
 
-    # MD_set only contain MD that not crash
-    @property
-    def MD_set(self):
-        return [MD for MD in self.MD_dict.values() if not MD.crashed]
 
-    # set of MD in mission (not in GCS)
-    @property
-    def MD_mission_set(self):
-        return [MD for MD in self.MD_dict.values() if not MD.crashed and not MD.in_GCS]
-
-    # HD_set only contain MD that not crash
-    @property
-    def HD_set(self):
-        return [HD for HD in self.HD_dict.values() if not HD.crashed]
-
-    # set of HD in mission (not in GCS)
-    @property
-    def HD_mission_set(self):
-        return [HD for HD in self.HD_dict.values() if not HD.crashed and not HD.in_GCS]
 
     # scan count, and check if crashed
     def MD_environment_interaction(self, obs):
@@ -101,9 +110,9 @@ class system_model:
                 self.scan_map[map_x_index, map_y_index] += 0.01
                 # self.update_scan(map_x_index, map_y_index, 0.01)
             # else:
-            #     print("out of Mape range")
-            #     print("ID, cell_x, cell_y, height_z", MD.ID, xyz_current)
-            #     print("map_x_index_const, map_y_index_const", MD.ID, map_x_index, map_y_index)
+            #     print_debug("out of Mape range")
+            #     print_debug("ID, cell_x, cell_y, height_z", MD.ID, xyz_current)
+            #     print_debug("map_x_index_const, map_y_index_const", MD.ID, map_x_index, map_y_index)
 
     def HD_environment_interaction(self, obs):
         for HD in self.HD_set:
@@ -138,19 +147,18 @@ class system_model:
             print(f"HD {HD.ID} battery: {HD.battery}")
 
     def location_backup_MD(self):
-
         pass
 
     def battery_consume(self):
         # TODO: avoid recalc when unused drone in base station. Only recalc when: 1. drone crashed. 2. drone low battery. 3.....
         for MD in self.MD_set:
             if MD.battery_update():
-                print(f"detected MD {MD.ID} charging complete, recalculate trajectory")
+                if self.print: print(f"detected MD {MD.ID} charging complete, recalculate trajectory")
                 self.recalc_trajectory = True
 
         for HD in self.HD_set:  # True means battery charging complete
             if HD.battery_update():
-                print(f"detected HD {HD.ID} charging complete, recalculate trajectory")
+                if self.print: print(f"detected HD {HD.ID} charging complete, recalculate trajectory")
                 self.recalc_trajectory = True
 
     def assign_HD(self):
@@ -164,6 +172,9 @@ class system_model:
     def sample_MD(self):
         return Mission_Drone(-1, self.update_freq)
 
+    def aliveDroneCount(self):
+        return len(self.MD_set) + len(self.HD_set)
+
     @property
     def sample_HD(self):
         return Honey_Drone(-2, self.update_freq)
@@ -175,37 +186,47 @@ class system_model:
 
         # check if mission can end
         scan_cell_map = self.scan_map[::self.cell_size, ::self.cell_size]   # transfer meter-based scan map to cell-based scan map
-        if np.all(scan_cell_map > 1):
+        if np.all(scan_cell_map > self.min_scan_requirement):
             # mission end if: all cells are scanned
             self.mission_Not_end -= 1
             self.mission_success = True
         elif self.mission_duration > self.mission_max_duration:
             # mission end if: mission time limit meet
-            self.mission_Not_end -= 1
+            self.mission_Not_end -= 2
+            print("\n Mission Fail :( \n")
+            self.mission_condition = 2
         else:
             pass
             # self.print_drones_battery()
 
         # check if mission end successfully
-        if not self.mission_Not_end:
+        if self.mission_Not_end <= 0:
             if self.mission_success:
                 print("\n Mission Complete!! \n")
-                print("cell-based scanned map:\n", scan_cell_map)
-                self.print_MDs()
-                self.print_HDs()
-                self.print_system()
+                self.mission_condition = 0
+                if self.print: print("cell-based scanned map:\n", scan_cell_map)
+                if self.print: self.print_MDs()
+                if self.print: self.print_HDs()
+                if self.print: self.print_system()
             else:
                 print("\n Mission Fail :( \n")
-                print("cell-based scanned map:\n", scan_cell_map)
-                self.print_MDs()
-                self.print_HDs()
-                self.print_system()
+                self.mission_condition = 1
+                if self.print: print("cell-based scanned map:\n", scan_cell_map)
+                if self.print: self.print_MDs()
+                if self.print: self.print_HDs()
+                if self.print: self.print_system()
 
         return self.mission_Not_end
 
     # this is a fast way to check for saving running time
     def is_mission_Not_end(self):
-        return self.mission_Not_end
+        return self.mission_Not_end > 0
+
+    def scanCompletePercent(self):
+        scan_cell_map = self.scan_map[::self.cell_size,::self.cell_size]  # transfer meter-based scan map to cell-based scan map
+        scan_complete_map = scan_cell_map > self.min_scan_requirement
+        count_true = np.count_nonzero(scan_complete_map)
+        return count_true/scan_cell_map.size
 
     def update_scan(self, x_axis, y_axis, amount):
         x_axis = x_axis - self.map_ori_x

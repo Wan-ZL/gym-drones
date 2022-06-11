@@ -33,6 +33,8 @@ from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl
 from gym_pybullet_drones.control.SimplePIDControl import SimplePIDControl
 from gym_pybullet_drones.utils.Logger import Logger
 from gym_pybullet_drones.utils.utils import sync, str2bool
+from multiprocessing import cpu_count
+from multiprocessing import Process
 
 if __name__ == "__main__":
 
@@ -147,6 +149,19 @@ if __name__ == "__main__":
 
         #### Compute control at the desired frequency ##############
         if i%CTRL_EVERY_N_STEPS == 0:
+            def parallel(j, ctrl, CTRL_EVERY_N_STEPS, env, obs, TARGET_POS, wp_counters, INIT_XYZS, INIT_RPYS):
+                action[str(j)], _, _ = ctrl[j].computeControlFromState(
+                    control_timestep=CTRL_EVERY_N_STEPS * env.TIMESTEP,
+                    state=obs[str(j)]["state"],
+                    target_pos=np.hstack([TARGET_POS[wp_counters[j], 0:2], INIT_XYZS[j, 2]]),
+                    # target_pos=INIT_XYZS[j, :] + TARGET_POS[wp_counters[j], :],
+                    target_rpy=INIT_RPYS[j, :]
+                    )
+
+            # parallel
+            # for j in range(ARGS.num_drones):
+            #     t = Process(target=parallel, args=[j, ctrl, CTRL_EVERY_N_STEPS, env, obs, TARGET_POS, wp_counters, INIT_XYZS, INIT_RPYS])
+            #     t.start()
 
             #### Compute control for the current way point #############
             for j in range(ARGS.num_drones):

@@ -5,7 +5,7 @@ import tensorflow.keras.layers as kl
 
 class ProbabilityDistribution(tf.keras.Model):
   def call(self, logits, **kwargs):
-    # Sample a random categorical action from the given logits.
+    # Sample a random categorical pybullet_action from the given logits.
     return tf.squeeze(tf.random.categorical(logits, 1), axis=-1)
 
 
@@ -33,7 +33,7 @@ class Model(tf.keras.Model):
     logits, value = self.predict_on_batch(obs)
     action = self.dist.predict_on_batch(logits)
     # Another way to sample actions:
-    #   action = tf.random.categorical(logits, 1)
+    #   pybullet_action = tf.random.categorical(logits, 1)
     # Will become clearer later why we don't use it.
     return np.squeeze(action, axis=-1), np.squeeze(value, axis=-1)
 

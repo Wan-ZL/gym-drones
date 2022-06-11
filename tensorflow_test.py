@@ -16,7 +16,7 @@ class ShowerEnv(Env):
         self.shower_length = 60
 
     def step(self, action):
-        # Apply action
+        # Apply pybullet_action
         # 0 -1 = -1 temperature
         # 1 -1 = 0
         # 2 -1 = 1 temperature

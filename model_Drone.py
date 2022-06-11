@@ -2,6 +2,7 @@ import numpy as np
 
 class Drone:
     def __init__(self, ID, update_freq):
+        self.print_debug = False
         self.ID = ID
         self.type = 'Drone'
         self.update_freq = update_freq
@@ -14,7 +15,7 @@ class Drone:
         self.speed_per_frame_max = 0.08     # this value obtained from experiment that drone doesn't crash for a 150 meter fly in one round
         self.crashed = False             #
         self.in_GCS = True
-        self.battery_max = 100.0         # battery level
+        self.battery_max = 100000.0         # battery level
         self.battery = self.battery_max
         self.consume_rate = 0.01
         # self.low_battery_thres = self.update_freq * self.consume_rate + 0.1  # this value is based on the consumption in one round
@@ -59,13 +60,13 @@ class Drone:
             return False
         if not self.in_GCS:     # drone in GCS always safe
             if self.battery <= 0:
-                print("\n====Drone crashed by zero battery====, ID:", self.ID, self.type, "\n")
+                if self.print_debug: print("\n====Drone crashed by zero battery====, ID:", self.ID, self.type, "\n")
                 self.crashed = True
                 return True
             if xyz_current[2] < 0.1:
                 self.crashed = True
-                print("\n====Drone crashed by zero height====, ID:", self.ID, self.type, xyz_current, "\n")
-                print(self)
+                if self.print_debug: print("\n====Drone crashed by zero height====, ID:", self.ID, self.type, xyz_current, "\n")
+                if self.print_debug: print(self)
                 self.crashed = True
                 return True
         return False

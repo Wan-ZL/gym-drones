@@ -85,7 +85,7 @@ if __name__ == "__main__":
         print("\n\n\n[WARNING] Simplified 1D problem for debugging purposes\n\n\n")
     #### Errors ################################################
         if not ARGS.env in ['takeoff', 'hover']: 
-            print("[ERROR] 1D action space is only compatible with Takeoff and HoverAviary")
+            print("[ERROR] 1D pybullet_action space is only compatible with Takeoff and HoverAviary")
             exit()
     if ARGS.act == ActionType.TUN and ARGS.env != 'tune' :
         print("[ERROR] ActionType.TUN is only compatible with TuneAviary")

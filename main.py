@@ -83,7 +83,7 @@ if __name__ == "__main__":
     for i in range(0, int(ARGS.duration_sec*env.SIM_FREQ), AGGR_PHY_STEPS):
 
         #### Step the simulation ###################################
-        print("action", action)
+        print("pybullet_action", action)
         obs, reward, done, info = env.step(action)
 
 

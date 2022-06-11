@@ -6,8 +6,8 @@ class Mission_Drone(Drone):
         Drone.__init__(self, ID, update_freq)
         self.type = "MD"
         self.type = 'MD'
-        self.battery_max = 100.0
-        self.battery = self.battery_max  # battery level
+        # self.battery_max = 100.0
+        # self.battery = self.battery_max  # battery level
         self.charging_rate = 0.02
         self.consume_rate = 0.01
         self.surveyed_time = 0

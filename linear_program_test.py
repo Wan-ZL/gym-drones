@@ -84,7 +84,7 @@ if __name__ == '__main__':
             X_ijk[(baseStation_x, baseStation_y), (i_x, i_y)] = pulp.LpVariable(f'X_({baseStation_x},{baseStation_y})({i_x},{i_y})k', lowBound=0, upBound=1, cat='Integer')
             X_ijk[(i_x, i_y), (baseStation_x, baseStation_y)] = pulp.LpVariable(f'X_({i_x},{i_y})({baseStation_x},{baseStation_y})k', lowBound=0, upBound=1, cat='Integer')
 
-    # print(type(X_ijk[(0,0),(1,1)]))
+    # print_debug(type(X_ijk[(0,0),(1,1)]))
     # test start
     # X_ijk[(2, 2), (1, 1)] = pulp.LpVariable(f'X_({2},{2})({1},{1})k', lowBound=1, upBound=1, cat='Integer')
     # X_ijk[(1, 1), (0, 1)] = pulp.LpVariable(f'X_({1},{1})({0},{1})k', lowBound=1, upBound=1, cat='Integer')
@@ -229,9 +229,9 @@ if __name__ == '__main__':
     print("\nStart solving:")
     MyProbLP.solve()
     draw_map(map_size, MyProbLP.variables())
-    # print("MyProbLP.variables()",MyProbLP)
+    # print_debug("MyProbLP.variables()",MyProbLP)
     # for v in MyProbLP.variables():
-    #     print(v.name, "=", v.varValue)
+    #     print_debug(v.name, "=", v.varValue)
     print("F(x) = ", pulp.value(MyProbLP.objective))
 
 
