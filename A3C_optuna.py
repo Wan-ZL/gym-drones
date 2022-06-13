@@ -51,7 +51,6 @@ class ActorCritic(nn.Module):
         super(ActorCritic, self).__init__()
 
         self.gamma = gamma
-
         self.pi_net = self.build_Net(*input_dims, n_actions, pi_net_struc)
         self.v_net = self.build_Net(*input_dims, 1, v_net_struct)
 

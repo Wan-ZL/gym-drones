@@ -99,6 +99,7 @@ class HyperGameSim(Env):
 
         if self.print: print("attacker locaiton", self.attacker.xyz)
 
+
         #### default parameters:
         num_MD = self.system.num_MD  # number of MD (in index, MD first then HD)
         num_HD = self.system.num_HD  # number of HD
