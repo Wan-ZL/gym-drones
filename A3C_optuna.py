@@ -1,5 +1,12 @@
 # Code is heavily inspired by Morvan Zhou's code. Please check out
 # his work at github.com/MorvanZhou/pytorch-A3C
+
+# TODO: Increase the hyperparameter for trial (AutoML)
+# TODO: Create defender model (save)
+# TODO: Create attacker model (save)
+# TODO: add two models to environment
+
+
 import os
 os.environ["OMP_NUM_THREADS"] = "1" # Error #34: System unable to allocate necessary resources for OMP thread:"
 
@@ -18,6 +25,7 @@ from torch.distributions import Categorical
 from Gym_HoneyDrone import HyperGameSim
 from multiprocessing import Manager
 from torch.utils.tensorboard import SummaryWriter
+from torch.optim.lr_scheduler import ExponentialLR, LambdaLR
 import optuna
 
 
@@ -39,23 +47,39 @@ class SharedAdam(torch.optim.Adam):
 
 
 class ActorCritic(nn.Module):
-    def __init__(self, input_dims, n_actions, gamma=0.99):
+    def __init__(self, input_dims, n_actions, gamma=0.99, pi_net_struc=[128], v_net_struct=[128]):
         super(ActorCritic, self).__init__()
 
         self.gamma = gamma
 
-        self.pi1 = nn.Linear(*input_dims, 128)
-        self.v1 = nn.Linear(*input_dims, 128)
-        self.pi2 = nn.Linear(128, 256)
-        self.v2 = nn.Linear(128, 256)
-        self.pi3 = nn.Linear(256, 128)
-        self.v3 = nn.Linear(256, 128)
-        self.pi = nn.Linear(128, n_actions)
-        self.v = nn.Linear(128, 1)
+        self.pi_net = self.build_Net(*input_dims, n_actions, pi_net_struc)
+        self.v_net = self.build_Net(*input_dims, 1, v_net_struct)
+
+        # self.pi1 = nn.Linear(*input_dims, 128)
+        # self.v1 = nn.Linear(*input_dims, 128)
+        # self.pi2 = nn.Linear(128, 256)
+        # self.v2 = nn.Linear(128, 256)
+        # self.pi3 = nn.Linear(256, 128)
+        # self.v3 = nn.Linear(256, 128)
+        # self.pi = nn.Linear(128, n_actions)
+        # self.v = nn.Linear(128, 1)
 
         self.rewards = []
         self.actions = []
         self.states = []
+
+
+    def build_Net(self, obser_space, action_space, net_struc):
+        layers = []
+        in_features = obser_space
+        # for i in range(n_layers):
+        for node_num in net_struc:
+            layers.append(nn.Linear(in_features, node_num))
+            layers.append(nn.ReLU())
+            in_features = node_num
+        layers.append(nn.Linear(in_features, action_space))
+        net = nn.Sequential(*layers)
+        return net
 
     def remember(self, state, action, reward):
         self.states.append(state)
@@ -67,24 +91,25 @@ class ActorCritic(nn.Module):
         self.actions = []
         self.rewards = []
 
-    def forward(self, state):
-        pi1 = F.relu(self.pi1(state))
-        v1 = F.relu(self.v1(state))
-
-        pi2 = self.pi2(pi1)
-        v2 = self.v2(v1)
-
-        pi3 = F.relu(self.pi3(pi2))
-        v3 = F.relu(self.v3(v2))
-
-        pi = self.pi(pi3)
-        v = self.v(v3)
-
-        return pi, v
+    # def forward(self, state):
+    #     pi1 = F.relu(self.pi1(state))
+    #     v1 = F.relu(self.v1(state))
+    #
+    #     pi2 = self.pi2(pi1)
+    #     v2 = self.v2(v1)
+    #
+    #     pi3 = F.relu(self.pi3(pi2))
+    #     v3 = F.relu(self.v3(v2))
+    #
+    #     pi = self.pi(pi3)
+    #     v = self.v(v3)
+    #
+    #     return pi, v
 
     def calc_R(self, done):
         states = torch.tensor(self.states, dtype=torch.float)
-        _, v = self.forward(states)
+        # _, v = self.forward(states)
+        v = self.v_net(states)
 
         R = v[-1] * (1 - int(done))
 
@@ -103,7 +128,10 @@ class ActorCritic(nn.Module):
 
         returns = self.calc_R(done)
 
-        pi, values = self.forward(states)
+        # pi, values = self.forward(states)
+        pi = self.pi_net(states)
+        values = self.v_net(states)
+
         values = values.squeeze()
         critic_loss = (returns - values) ** 2
 
@@ -118,7 +146,9 @@ class ActorCritic(nn.Module):
 
     def choose_action(self, observation):
         state = torch.tensor([observation], dtype=torch.float)
-        pi, v = self.forward(state)
+        # pi, v = self.forward(state)
+        pi = self.pi_net(state)
+        # v = self.v_net(state)
         probs = torch.softmax(pi, dim=1)
         dist = Categorical(probs)
         action = dist.sample().numpy()[0]
@@ -127,21 +157,25 @@ class ActorCritic(nn.Module):
 
 
 class Agent(mp.Process):
-    def __init__(self, global_actor_critic, optimizer, input_dims, n_actions,
-                 gamma, lr, name, global_ep_idx, glob_episode_thred, global_dict, config):
+    def __init__(self, global_actor_critic, optimizer, scheduler, input_dims, n_actions,
+                 name, global_ep_idx, glob_episode_thred, global_dict, config):
         super(Agent, self).__init__()
         self.env = HyperGameSim()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print("Local Using", self.device)
-        self.local_actor_critic = ActorCritic(input_dims, n_actions, gamma).to(self.device)
+        self.local_actor_critic = ActorCritic(input_dims, n_actions,
+                                              gamma=config["gamma"], pi_net_struc=config["pi_net_struc"],
+                                              v_net_struct=config["v_net_struct"]).to(self.device)
         self.global_actor_critic = global_actor_critic
         self.name = 'w%02i' % name
         print("creating: " + self.name)
         self.episode_idx = global_ep_idx
         self.optimizer = optimizer
+        self.scheduler = scheduler
         self.glob_episode_thred = glob_episode_thred
         self.shared_dict = global_dict
         self.config = config
+
         # self.writer = writer
 
     def run(self):
@@ -185,8 +219,12 @@ class Agent(mp.Process):
             self.shared_dict["reward"].append(score)
             # self.shared_dict["t_step"].append(t_step)       # number of round for a game
 
+            # self.scheduler.step()  # update learning rate each episode
+
             print(self.name, 'global-episode ', self.episode_idx.value, 'reward %.1f' % score)
             writer.add_scalar("Score", score, self.episode_idx.value)
+
+        self.env.close_env()    # close client for avoiding client limit error
 
         global_reward = [ele for ele in self.shared_dict["reward"]]  # the return of the last 10 percent episodes
         len_last_return = max(1, int(len(global_reward) * 0.1))     # max can make sure at lead one element in list
@@ -196,7 +234,21 @@ class Agent(mp.Process):
         ave_10_per_return = sum(last_ten_percent_return) / len(last_ten_percent_return)
 
         self.shared_dict["ave_10_per_return"].append(ave_10_per_return)
-        writer.add_hparams(self.config, {'return_reward': ave_10_per_return})  # add for Hyperparameter Tuning
+
+        # convert list in self.config to integers
+        temp_config = {}
+        for key, value in self.config.items():
+            if key == 'pi_net_struc':
+                temp_config['pi_net_num'] = len(value)
+                for index, num_node in enumerate(value):
+                    temp_config['pi_net'+str(index)] = num_node
+            elif key == 'v_net_struct':
+                temp_config['v_net_num'] = len(value)
+                for index, num_node in enumerate(value):
+                    temp_config['v_net' + str(index)] = num_node
+            else:
+                temp_config[key] = value
+        writer.add_hparams(temp_config, {'return_reward': ave_10_per_return})  # add for Hyperparameter Tuning  # TODO fix tensorflow display issue by moving 'add_hparams' to objective function.
 
         writer.flush()
         writer.close()  # close SummaryWriter of TensorBoard
@@ -206,28 +258,47 @@ class Agent(mp.Process):
 def objective(trial):
     start_time = time.time()
 
-    config = dict(glob_episode_thred=1, gamma=0.99, lr=1e-4)    # this config may be changed by optuna
+    config = dict(glob_episode_thred=1, gamma=0.99, lr=1e-4, LR_decay=0.99, pi_net_struc=[128], v_net_struct=[128])    # this config may be changed by optuna
 
     # 2. Suggest values of the hyperparameters using a trial object.
     config["glob_episode_thred"] = trial.suggest_int('glob_episode_thred', 1000, 3000, 100)     # total number of episodes
     config["gamma"] = trial.suggest_loguniform('gamma', 0.1, 1.0)
     config["lr"] = trial.suggest_loguniform('lr', 1e-7, 1e-1)
+    config["LR_decay"] = trial.suggest_loguniform('LR_decay', 0.8, 1)   # since scheduler is not use. This one has no impact to reward
+    pi_n_layers = trial.suggest_int('n_layers', 1, 5)  # total number of layer
+    for i in range(pi_n_layers):
+        config["pi_net_struc"].append(trial.suggest_int(f'n_units_l{i}', 4, 512))   # try various nodes each layer
+    v_n_layers = trial.suggest_int('n_layers', 1, 5)  # total number of layer
+    for i in range(v_n_layers):
+        config["v_net_struct"].append(trial.suggest_int(f'n_units_l{i}', 4, 512))  # try various nodes each layer
     print("config", config)
 
-    num_worker = 128  # mp.cpu_count()     # update this for matching computer resources
+    num_worker = 120  # mp.cpu_count()     # update this for matching computer resources
 
     temp_env = HyperGameSim()
     n_actions = temp_env.action_space.n
     input_dims = temp_env.observation_space.shape
+    temp_env.close_env()    # close client for avoiding client limit error
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Share Using", device)
-    global_actor_critic = ActorCritic(input_dims, n_actions).to(device)  # global NN
+    global_actor_critic = ActorCritic(input_dims, n_actions,
+                                      gamma=config["gamma"],
+                                      pi_net_struc=config["pi_net_struc"],
+                                      v_net_struct=config["v_net_struct"]).to(device)  # global NN
     print(global_actor_critic)
     global_actor_critic.share_memory()
     optim = SharedAdam(global_actor_critic.parameters(), lr=config['lr'],
-                       betas=(0.92, 0.999))
+                       betas=(0.9, 0.999))
     global_ep = mp.Value('i', 0)
+
+    def lambda_function(epoch):  # epoch increase one when scheduler.step() is called
+        return config["LR_decay"] ** epoch
+
+    # scheduler = LambdaLR(optim, lr_lambda=lambda_function)
+    scheduler = None    # don't use scheduler
+
+
 
     shared_dict = {}
     shared_dict["reward"] = Manager().list()  # use Manager().list() to create a shared list between processes
@@ -239,14 +310,13 @@ def objective(trial):
 
     workers = [Agent(global_actor_critic,
                      optim,
+                     scheduler,
                      input_dims,
                      n_actions,
                      name=i,
                      global_ep_idx=global_ep,
                      global_dict=shared_dict,
                      config=config,
-                     gamma=config['gamma'],
-                     lr=config['lr'],
                      glob_episode_thred=config['glob_episode_thred']) for i in range(num_worker)]
     [w.start() for w in workers]
     [w.join() for w in workers]

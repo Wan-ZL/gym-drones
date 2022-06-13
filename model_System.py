@@ -32,10 +32,7 @@ class system_model:
         self.assign_MD()
 
     # MD_set only contain MD that not crash
-    # TODO: Increase the hyperparameter for trial (AutoML)
-    # TODO: Create defender model (save)
-    # TODO: Create attacker model (save)
-    # TODO: add two models to environment
+
 
 
     @property

@@ -77,7 +77,14 @@ class HyperGameSim(Env):
         self.observation_space = Box(low=np.array([0., 0.]),
                                      high=np.array([self.defender.system.mission_max_duration, 1.]))
 
+    # close client. This function check the connection status before close it. Use this function to avoid client limit.
+    def close_env(self):
+        if self.env is not None:
+            if p.getConnectionInfo(self.env.getPyBulletClient())['isConnected']:
+                self.env.close()
+
     def reset(self, *args):
+        self.close_env()    # this close previous client
         self.start_time = time.time()
         self.initDroneEnv()
         # mission_complete_ratio = self.system.scanCompletePercent()
@@ -155,6 +162,7 @@ class HyperGameSim(Env):
                               print_result = False
                               )
 
+
         PYB_CLIENT = self.env.getPyBulletClient()
 
         #### Initialize the controllers ############################
@@ -176,9 +184,11 @@ class HyperGameSim(Env):
             HD.assign_destination(INIT_XYZS[HD.ID])
             HD.xyz_temp = HD.xyz
 
+        # disconnect exist physics client, and create a new clident
         p.loadURDF("duck_vhacd.urdf", self.attacker.xyz, physicsClientId=PYB_CLIENT)
 
         self.update_freq = self.system.update_freq
+
 
 
 
@@ -241,7 +251,7 @@ class HyperGameSim(Env):
 
         # Attacker
         self.attacker.observe()
-        self.attacker.select_strategy(7)
+        self.attacker.select_strategy(random.randint(1, 9))
         self.attacker.action()
 
         # Defender
