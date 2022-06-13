@@ -59,6 +59,10 @@ from torch.utils.tensorboard import SummaryWriter
 #         self.surv_complete = 0
 #         return [self.mission_time, self.surv_complete]
 
+# TODO: adjust more hyperparameters
+# TODO: save trained defender's model
+
+
 class DQN(nn.Module):
     def __init__(self, obser_space, action_space,
                  batch_size=32,

@@ -262,7 +262,7 @@ if __name__ == '__main__':
     # /home/zelin/Drone/data
     # study = optuna.create_study(direction='maximize', study_name="A3C-hyperparameter-study", storage="sqlite://///Users/wanzelin/办公/gym-drones/data/HyperPara_database.db", load_if_exists=True)
     study = optuna.create_study(direction='maximize', study_name="A3C-hyperparameter-study", storage="sqlite://////home/zelin/Drone/data/HyperPara_database.db", load_if_exists=True)
-    study.optimize(objective, n_trials=100)
+    study.optimize(objective, n_trials=1)
 
     # Saving data to file
     # Reward
