@@ -70,6 +70,7 @@ class HyperGameSim(Env):
         self.ARGS = None
         self.start_time = None
         self.initDroneEnv()
+        self.close_env()  # close client in init for avoiding client limit error
 
         # variable for current env
         self.action_space = Discrete(self.defender.strategy)
@@ -81,10 +82,10 @@ class HyperGameSim(Env):
     def close_env(self):
         if self.env is not None:
             if p.getConnectionInfo(self.env.getPyBulletClient())['isConnected']:
+                # print("closing client", self.env.getPyBulletClient())
                 self.env.close()
 
     def reset(self, *args):
-        self.close_env()    # this close previous client
         self.start_time = time.time()
         self.initDroneEnv()
         # mission_complete_ratio = self.system.scanCompletePercent()
@@ -148,6 +149,7 @@ class HyperGameSim(Env):
         AGGR_PHY_STEPS = int(self.ARGS.simulation_freq_hz / self.ARGS.control_freq_hz) if self.ARGS.aggregate else 1
 
         # gym-like environment
+        self.close_env()  # close previous client
         self.env = CtrlAviary(drone_model=self.ARGS.drone,
                               num_drones=self.ARGS.num_drones,
                               initial_xyzs=INIT_XYZS,
@@ -162,7 +164,7 @@ class HyperGameSim(Env):
                               user_debug_gui=self.ARGS.user_debug_gui,
                               print_result = False
                               )
-
+        # print("creating client", self.env.getPyBulletClient())
 
         PYB_CLIENT = self.env.getPyBulletClient()
 
@@ -215,6 +217,7 @@ class HyperGameSim(Env):
             done = False
         else:
             done = True
+            self.close_env()  # close client for avoiding client limit error
             print("--- game duration: %s seconds ---" % round(time.time() - self.start_time, 1))
 
 

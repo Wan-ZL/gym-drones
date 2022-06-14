@@ -223,7 +223,6 @@ class Agent(mp.Process):
             print(self.name, 'global-episode ', self.episode_idx.value, 'reward %.1f' % score)
             writer.add_scalar("Score", score, self.episode_idx.value)
 
-        self.env.close_env()    # close client for avoiding client limit error
 
         global_reward = [ele for ele in self.shared_dict["reward"]]  # the return of the last 10 percent episodes
         len_last_return = max(1, int(len(global_reward) * 0.1))     # max can make sure at lead one element in list
@@ -260,7 +259,8 @@ def objective(trial):
     config = dict(glob_episode_thred=1, gamma=0.99, lr=1e-4, LR_decay=0.99, pi_net_struc=[128], v_net_struct=[128])    # this config may be changed by optuna
 
     # 2. Suggest values of the hyperparameters using a trial object.
-    config["glob_episode_thred"] = trial.suggest_int('glob_episode_thred', 1000, 3000, 100)     # total number of episodes
+    # config["glob_episode_thred"] = trial.suggest_int('glob_episode_thred', 1000, 3000, 100)     # total number of episodes
+    config["glob_episode_thred"] = trial.suggest_int('glob_episode_thred', 5, 5)  # total number of episodes
     config["gamma"] = trial.suggest_loguniform('gamma', 0.1, 1.0)
     config["lr"] = trial.suggest_loguniform('lr', 1e-7, 1e-1)
     config["LR_decay"] = trial.suggest_loguniform('LR_decay', 0.8, 1)   # since scheduler is not use. This one has no impact to reward
@@ -272,7 +272,7 @@ def objective(trial):
         config["v_net_struct"].append(trial.suggest_int(f'n_units_l{i}', 4, 512))  # try various nodes each layer
     print("config", config)
 
-    num_worker = 120  # mp.cpu_count()     # update this for matching computer resources
+    num_worker = 12  # mp.cpu_count()     # update this for matching computer resources
 
     temp_env = HyperGameSim()
     n_actions = temp_env.action_space.n
@@ -329,8 +329,8 @@ def objective(trial):
 if __name__ == '__main__':
     # 3. Create a study object and optimize the objective function.
     # /home/zelin/Drone/data
-    # study = optuna.create_study(direction='maximize', study_name="A3C-hyperparameter-study", storage="sqlite://///Users/wanzelin/办公/gym-drones/data/HyperPara_database.db", load_if_exists=True)
-    study = optuna.create_study(direction='maximize', study_name="A3C-hyperparameter-study", storage="sqlite://////home/zelin/Drone/data/HyperPara_database.db", load_if_exists=True)
+    study = optuna.create_study(direction='maximize', study_name="A3C-hyperparameter-study", storage="sqlite://///Users/wanzelin/办公/gym-drones/data/HyperPara_database.db", load_if_exists=True)
+    # study = optuna.create_study(direction='maximize', study_name="A3C-hyperparameter-study", storage="sqlite://////home/zelin/Drone/data/HyperPara_database.db", load_if_exists=True)
     study.optimize(objective, n_trials=1)
 
     # Saving data to file
