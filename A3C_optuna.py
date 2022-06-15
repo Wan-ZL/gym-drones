@@ -180,7 +180,7 @@ class Agent(mp.Process):
     def run(self):
         # create writer for TensorBoard
         # run 'tensorboard --logdir=runs' in terminal to start TensorBoard.
-        writer = SummaryWriter("runs/" + self.shared_dict["start_time"])
+        writer = SummaryWriter("runs/each_run_" + self.shared_dict["start_time"])
 
         while self.episode_idx.value < self.glob_episode_thred:
             # Episode start
@@ -227,26 +227,10 @@ class Agent(mp.Process):
         global_reward = [ele for ele in self.shared_dict["reward"]]  # the return of the last 10 percent episodes
         len_last_return = max(1, int(len(global_reward) * 0.1))     # max can make sure at lead one element in list
         last_ten_percent_return = global_reward[-len_last_return:]
-        print("last_ten_percent_return", last_ten_percent_return)
 
         ave_10_per_return = sum(last_ten_percent_return) / len(last_ten_percent_return)
 
         self.shared_dict["ave_10_per_return"].append(ave_10_per_return)
-
-        # convert list in self.config to integers
-        temp_config = {}
-        for key, value in self.config.items():
-            if key == 'pi_net_struc':
-                temp_config['pi_net_num'] = len(value)
-                for index, num_node in enumerate(value):
-                    temp_config['pi_net'+str(index)] = num_node
-            elif key == 'v_net_struct':
-                temp_config['v_net_num'] = len(value)
-                for index, num_node in enumerate(value):
-                    temp_config['v_net' + str(index)] = num_node
-            else:
-                temp_config[key] = value
-        writer.add_hparams(temp_config, {'return_reward': ave_10_per_return})  # add for Hyperparameter Tuning  # TODO fix tensorflow display issue by moving 'add_hparams' to objective function.
 
         writer.flush()
         writer.close()  # close SummaryWriter of TensorBoard
@@ -255,12 +239,13 @@ class Agent(mp.Process):
 
 def objective(trial):
     start_time = time.time()
+    writer_hparam = SummaryWriter("runs/each_run_" +str(start_time))
 
-    config = dict(glob_episode_thred=1, gamma=0.99, lr=1e-4, LR_decay=0.99, pi_net_struc=[128], v_net_struct=[128])    # this config may be changed by optuna
+    config = dict(glob_episode_thred=1000, gamma=0.99, lr=1e-4, LR_decay=0.99, pi_net_struc=[128], v_net_struct=[128])    # this config may be changed by optuna
 
     # 2. Suggest values of the hyperparameters using a trial object.
-    # config["glob_episode_thred"] = trial.suggest_int('glob_episode_thred', 1000, 3000, 100)     # total number of episodes
-    config["glob_episode_thred"] = trial.suggest_int('glob_episode_thred', 5, 5)  # total number of episodes
+    config["glob_episode_thred"] = trial.suggest_int('glob_episode_thred', 1000, 3000, 100)     # total number of episodes
+    # config["glob_episode_thred"] = trial.suggest_int('glob_episode_thred', 5, 5)  # total number of episodes
     config["gamma"] = trial.suggest_loguniform('gamma', 0.1, 1.0)
     config["lr"] = trial.suggest_loguniform('lr', 1e-7, 1e-1)
     config["LR_decay"] = trial.suggest_loguniform('LR_decay', 0.8, 1)   # since scheduler is not use. This one has no impact to reward
@@ -272,7 +257,7 @@ def objective(trial):
         config["v_net_struct"].append(trial.suggest_int(f'n_units_l{i}', 4, 512))  # try various nodes each layer
     print("config", config)
 
-    num_worker = 12  # mp.cpu_count()     # update this for matching computer resources
+    num_worker = 120  # mp.cpu_count()     # update this for matching computer resources
 
     temp_env = HyperGameSim()
     n_actions = temp_env.action_space.n
@@ -323,15 +308,32 @@ def objective(trial):
     print("--- Simulation Time: %s seconds ---" % round(time.time() - start_time, 1))
 
     global_reward_10_per = [ele for ele in shared_dict["ave_10_per_return"]]    # get reward of all local agents
-    return sum(global_reward_10_per)/len(global_reward_10_per)  # return average value
+    ave_global_reward_10_per = sum(global_reward_10_per)/len(global_reward_10_per)
+
+    # convert list in self.config to integers
+    temp_config = {}
+    for key, value in config.items():
+        if key == 'pi_net_struc':
+            temp_config['pi_net_num'] = len(value)
+            for index, num_node in enumerate(value):
+                temp_config['pi_net' + str(index)] = num_node
+        elif key == 'v_net_struct':
+            temp_config['v_net_num'] = len(value)
+            for index, num_node in enumerate(value):
+                temp_config['v_net' + str(index)] = num_node
+        else:
+            temp_config[key] = value
+    writer_hparam.add_hparams(temp_config, {'return_reward': ave_global_reward_10_per})  # add for Hyperparameter Tuning
+
+    return ave_global_reward_10_per  # return average value
 
 
 if __name__ == '__main__':
     # 3. Create a study object and optimize the objective function.
     # /home/zelin/Drone/data
-    study = optuna.create_study(direction='maximize', study_name="A3C-hyperparameter-study", storage="sqlite://///Users/wanzelin/办公/gym-drones/data/HyperPara_database.db", load_if_exists=True)
-    # study = optuna.create_study(direction='maximize', study_name="A3C-hyperparameter-study", storage="sqlite://////home/zelin/Drone/data/HyperPara_database.db", load_if_exists=True)
-    study.optimize(objective, n_trials=1)
+    # study = optuna.create_study(direction='maximize', study_name="A3C-hyperparameter-study", storage="sqlite://///Users/wanzelin/办公/gym-drones/data/HyperPara_database.db", load_if_exists=True)
+    study = optuna.create_study(direction='maximize', study_name="A3C-hyperparameter-study", storage="sqlite://////home/zelin/Drone/data/HyperPara_database.db", load_if_exists=True)
+    study.optimize(objective, n_trials=100)
 
     # Saving data to file
     # Reward
