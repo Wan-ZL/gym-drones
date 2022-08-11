@@ -17,7 +17,11 @@ class Drone:
         self.in_GCS = True
         self.battery_max = 100000.0         # battery level
         self.battery = self.battery_max
-        self.consume_rate = 0.01
+        self.E_P = 0.001
+        self.E_C = 0.001
+        self.E_R = 0.001
+        self.consume_rate = self.E_P + self.E_C + self.E_R
+        self.accumulated_consumption = 0        # this will show the total energy consumption in one episode
         # self.low_battery_thres = self.update_freq * self.consume_rate + 0.1  # this value is based on the consumption in one round
         self.max_signal = 20                # unit: dBm (fixed)
         self.signal = self.max_signal       # unit: dBm
@@ -51,7 +55,12 @@ class Drone:
                     return True
         else:                                   # any drone not in GCS consume energy
             self.battery -= self.consume_rate
+            self.accumulated_consumption += self.consume_rate
         return False
+
+    def consume_rate_update(self, DS_j):
+        self.consume_rate = self.E_P + self.E_C + self.E_R * (DS_j/10)
+
 
 
     # check if a drone should change from normal condition to crashed condition
@@ -103,7 +112,7 @@ class Drone:
     # @property make this function as variable so '()' is not required when calling it (same as Getter in Java)
     @property
     def low_battery_thres(self):
-        return self.update_freq * self.consume_rate + 0.1
+        return self.update_freq * (self.E_P + self.E_C + self.E_R) + 0.1
 
     def __repr__(self):
         return str(vars(self))

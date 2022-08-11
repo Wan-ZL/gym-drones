@@ -11,7 +11,7 @@ import torch.multiprocessing as mp
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Categorical
-from Gym_HoneyDrone import HyperGameSim
+from Gym_HoneyDrone_defender_only import HyperGameSim
 from multiprocessing import Manager
 from torch.utils.tensorboard import SummaryWriter
 

@@ -22,6 +22,9 @@ class attacker_model(player_model):
         self.target_set = []
         self.epsilon = 0.5                      # variable used in determine target range
         self.attack_success_prob = 0.2          # attack success rate of each attack on each drone
+        self.att_counter = 0    # number of attack launched in a round
+        self.att_succ_counter = 0  # count the number of drone compromised in a round
+        self.max_att_budget = 5     # the maximum number of attack can launch in a round
 
     def signal2strategy(self, obs_signal):
         conditions = lambda x: {
@@ -89,16 +92,26 @@ class attacker_model(player_model):
     #     self.strategy = 8
 
     def action(self):
+        # return: number of drone compromised in one action
         if self.print: print("attacker strategy:", self.strategy, "signal", self.strategy2signal_set[self.strategy])
         target_set = self.S_target_dict[self.strategy]
+
+        if len(target_set) > self.max_att_budget:
+            # if exceed budget limit, randomly select some of them
+            target_set = random.sample(target_set, self.max_att_budget)
+
+        self.att_counter = 0        # reset counter before action execute
+        self.att_succ_counter = 0   # reset counter before action execute
         for drone in target_set:
             if self.print: print("attacking", drone.ID, drone.type)
+            self.att_counter += 1
             # only attack not crashed drone
             if random.uniform(0,1) < self.attack_success_prob:
                 if self.print: print("attack success:", drone)
                 drone.xyz[2] = 0
                 drone.xyz_temp[2] = 0
                 drone.crashed = True
+                self.att_succ_counter += 1
 
 
 

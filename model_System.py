@@ -14,7 +14,7 @@ class system_model:
         self.mission_duration_max = 100     # unit: round
         self.mission_max_duration = 200  # T_vision^{max}_m in paper
         self.mission_condition = 0  # -1 means game not end, 0 means mission success, 1 means mission failed by unfinished scan, 2, failed by no time, 3. failed by no MD
-        self.map_cell_number = 5    # number of cell each side
+        self.map_cell_number = 10    # number of cell each side
         self.cell_size = 100  # in meter     (left bottom point of cell represents the coordinate of cell
         self.map_size = self.map_cell_number * self.cell_size   # in meter
         self.map_ori_x = 1  # original point of target area
@@ -22,19 +22,17 @@ class system_model:
         self.scan_map = np.zeros((self.map_size, self.map_size))
         self.scan_cell_map = self.scan_map[::self.cell_size, ::self.cell_size]
         self.min_scan_requirement = 5
-        self.recalc_trajectory = False  # True: need recalculate trajectory. TODO: Recalc when charging to full.
-        self.num_MD = 5  # number of MD (in index, MD first then HD)
-        self.num_HD = 3  # number of HD
+        self.recalc_trajectory = False  # True: need recalculate trajectory.
+        self.num_MD = 10  # number of MD (in index, MD first then HD)
+        self.num_HD = 5  # number of HD
         self.MD_dict = {}  # key is id, value is class detail
         self.HD_dict = {}
         self.MD_crashed_IDs = []  # includes MD crashed or crashed
         self.assign_HD()
         self.assign_MD()
 
+
     # MD_set only contain MD that not crash
-
-
-
     @property
     def MD_set(self):
         return [MD for MD in self.MD_dict.values() if not MD.crashed]
@@ -44,7 +42,7 @@ class system_model:
     def MD_mission_set(self):
         return [MD for MD in self.MD_dict.values() if not MD.crashed and not MD.in_GCS]
 
-    # HD_set only contain MD that not crash
+    # HD_set only contain HD that not crash
     @property
     def HD_set(self):
         return [HD for HD in self.HD_dict.values() if not HD.crashed]

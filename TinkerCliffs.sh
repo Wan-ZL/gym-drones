@@ -2,7 +2,7 @@
 
 #SBATCH --ntasks=128
 #SBATCH -t 05-00:00:00
-#SBATCH -p largemem_q
+#SBATCH -p normal_q
 #SBATCH --account=zelin1
 #SBATCH --export=NONE # this makes sure the compute environment is clean
 
@@ -22,7 +22,7 @@ source activate dronePytorch
 
 python --version
 
-python A3C_optuna.py
+python A3C_train_defender_optuna.py
 
 
 echo "Scrpt End"

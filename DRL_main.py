@@ -22,7 +22,7 @@ import torchvision.transforms as T
 from model_System import system_model
 from model_Defender import defender_model
 from model_Attacker import attacker_model
-from Gym_HoneyDrone import HyperGameSim
+from Gym_HoneyDrone_defender_only import HyperGameSim
 from torch.utils.tensorboard import SummaryWriter
 
 # class DroneSim(Env):
