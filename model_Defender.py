@@ -8,6 +8,7 @@ class defender_model(player_model):
     def __init__(self, system):
         player_model.__init__(self, system)
         self.strategy = 10  # defense strategy, range [1, 10]
+        self.number_of_strategy = 10        # total number of strategy
         self.strategy2signal_set = [-20, -7.9, -0.9, 4.0, 7.9, 11.1, 13.8, 16.1, 18.1, 20]
         self.rho = 5.0        # rho used by sg_{MD} = sg_{HD} - \rho
         self.tao_lower = 2  # The lower bounds of the number of MDs that HDs can protect simultaneously

@@ -9,6 +9,7 @@ class player_model:
         self.strategy = 9
         self.strategy_index_start = 0  # strategy index range. in paper, strategy start from 1, but in coding, strategy index start from 0 for convinience
         self.strategy_index_end = 9  # strategy index range
+        self.number_of_strategy = 10    # total number of strategy
 
     def update_location(self, x_axis, y_axis, z_axis):
         self.xyz = (x_axis, y_axis, z_axis)
