@@ -8,7 +8,7 @@ class attacker_model(player_model):
         player_model.__init__(self, system)
         # randomly set to target area when create
         self.xyz = np.array([int(system.map_size/2) ,int(system.map_size/2), 0]) #np.array([random.randrange(1,system.map_cell_number+1), random.randrange(1,system.map_cell_number+1), 0])
-        self.obs_sig_dict = defaultdict(int)      # key is drone ID, value is observed signal level
+        self.obs_sig_dict = {}      # key: drone ID, value: observed signal strength
         self.S_target_dict = defaultdict(list)
         self.observe()                  # observe environment and add value to 'obs_sig_dict' and 'S_target_dict'
         self.compromise_record = {}     # key: att_stra (observed signal), value: def_stra (since attacker doesn't know actual signal, we use observed signal)
@@ -16,8 +16,10 @@ class attacker_model(player_model):
         self.num_def_stra = 9                    # number o f defender strategy
         self.success_record = np.zeros((system.num_MD + system.num_HD, self.num_def_stra))  # row drone ID, column: def_stra
         self.failure_record = np.zeros((system.num_MD + system.num_HD, self.num_def_stra))
-        self.strategy = 9                       # index range (0,9) maps to attack strategy range (1,10)
+        self.strategy = 10                       # index range (0,9) maps to attack strategy range (1,10)
+        self.number_of_strategy = 10            # total number of strategy
         self.strategy2signal_set = [(-100,-98.1), (-98.1,-96.1), (-96.1,-93.8), (-93.8,-91.1), (-91.1,-87.9), (-87.9,-84.0), (-84.0,-79.0), (-79.0,-72.0), (-72.0,-60), (-60,20)]
+        self.undetect_dbm = -101
         # condition edit in 'def observe()'. It convert signal strength to strategy index
         self.target_set = []
         self.epsilon = 0.5                      # variable used in determine target range
@@ -28,9 +30,9 @@ class attacker_model(player_model):
 
     def signal2strategy(self, obs_signal):
         conditions = lambda x: {
-            x < -100: -1, -100 <= x < -98.1: 0, -98.1 <= x < -96.1: 1, -96.1 <= x < -93.8: 2, -93.8 <= x < -91.1: 3,
-            -91.1 <= x < -87.9: 4,
-            -87.9 <= x < -84.0: 5, -84.0 <= x < -79.0: 6, -79.0 <= x < -72.0: 7, -72.0 <= x < -60: 8, -60 <= x <= 20: 9,
+            x <= -100: -1, -100 < x <= -98.1: 0, -98.1 < x <= -96.1: 1, -96.1 < x <= -93.8: 2, -93.8 < x <= -91.1: 3,
+            -91.1 < x <= -87.9: 4,
+            -87.9 < x <= -84.0: 5, -84.0 < x <= -79.0: 6, -79.0 < x <= -72.0: 7, -72.0 < x <= -60: 8, -60 < x <= 20: 9,
             20 < x: -1
         }
         return conditions(obs_signal)[True]

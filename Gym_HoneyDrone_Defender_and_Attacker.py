@@ -14,7 +14,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-import torchvision.transforms as T
+# import torchvision.transforms as T
 
 from model_System import system_model
 from model_Defender import defender_model
@@ -35,12 +35,6 @@ import matplotlib.pyplot as plt
 from collections import namedtuple, deque
 from itertools import count
 from PIL import Image
-
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-import torchvision.transforms as T
 
 from model_System import system_model
 from model_Defender import defender_model
@@ -75,10 +69,17 @@ class HyperGameSim(Env):
         self.close_env()  # close client in init for avoiding client limit error
 
         # variable for current env
-        self.action_space = Discrete(self.defender.strategy)
+        self.action_space = dict()
+        self.action_space['def'] = Discrete(self.defender.number_of_strategy)
+        self.action_space['att'] = Discrete(self.attacker.number_of_strategy)
+        self.observation_space = dict()
         # [time duration, ratio of mission complete]
-        self.observation_space = Box(low=np.array([0., 0.]),
+        self.observation_space['def'] = Box(low=np.array([0., 0.]),
                                      high=np.array([self.defender.system.mission_max_duration, 1.]))
+        # [time duration, ratio of attack success, [set of received signal level for all drones]]
+        low_array = np.array([0., 0.]+[self.attacker.undetect_dbm for _ in range(self.system.num_MD+self.system.num_HD)])    # 'undetect_dbm' dBm means the signal is uundetectable
+        high_array = np.array([self.defender.system.mission_max_duration, 1.]+[20. for _ in range(self.system.num_MD+self.system.num_HD)])
+        self.observation_space['att'] = Box(low=low_array, high=high_array)
 
     # close client. This function check the connection status before close it. Use this function to avoid client limit.
     def close_env(self):
@@ -90,8 +91,28 @@ class HyperGameSim(Env):
     def reset(self, *args):
         self.start_time = time.time()
         self.initDroneEnv()
+        # def
         # mission_complete_ratio = self.system.scanCompletePercent()
-        state = [self.system.mission_duration, self.system.scanCompletePercent()]
+        state_def = [self.system.mission_duration, self.system.scanCompletePercent()]
+        # att
+        # attack success ratio
+        if self.attacker.att_counter == 0:
+            att_succ_rate = 0
+        else:
+            att_succ_rate = self.attacker.att_succ_counter / self.attacker.att_counter
+        # set of attacker's received signal
+        att_signal_set = []
+        for id in range(self.system.num_MD + self.system.num_HD):
+            if id in self.attacker.obs_sig_dict:
+                att_signal_set.append(self.attacker.obs_sig_dict[id])
+            else:
+                att_signal_set.append(self.attacker.undetect_dbm)
+
+        state_att = [self.system.mission_duration, att_succ_rate] + att_signal_set
+        # combine
+        state = {}
+        state['def'] = state_def
+        state['att'] = state_att
         return state
 
     def initDroneEnv(self):
@@ -197,15 +218,40 @@ class HyperGameSim(Env):
 
 
     # step inherent from gym.step, but changed the return format (two rewards)
-    def step(self, action_def=random.randint(1, 9), action_att=random.randint(1, 9)) -> Tuple[ObsType, float, float, bool, dict]:
+    def step(self, action_def=None, action_att=None) -> Tuple[dict, dict, bool, dict]:
+        if action_def is None:
+            action_def = random.randint(0, 9)
+        if action_att is None:
+            action_att = random.randint(0, 9)
 
         # pybullet environment
         self.roundBegin(action_def, action_att)
         self.moveDrones()
 
-        # hyperGame environment
+        # hyperGame environment state
+        # def
         mission_complete_ratio = self.system.scanCompletePercent()
-        state = [self.system.mission_duration, mission_complete_ratio]
+        state_def = [self.system.mission_duration, mission_complete_ratio]
+        # att
+        # attack success ratio
+        if self.attacker.att_counter == 0:
+            att_succ_rate = 0
+        else:
+            att_succ_rate = self.attacker.att_succ_counter/self.attacker.att_counter
+        # set of attacker's received signal
+        att_signal_set = []
+        for id in range(self.system.num_MD+self.system.num_HD):
+            if id in self.attacker.obs_sig_dict:
+                att_signal_set.append(self.attacker.obs_sig_dict[id])
+            else:
+                att_signal_set.append(self.attacker.undetect_dbm)
+
+        state_att = [self.system.mission_duration, att_succ_rate] + att_signal_set
+        # combine
+        state = {}
+        state['def'] = state_def
+        state['att'] = state_att
+
 
         # Defender's Reward
         w_MS = 1.0/3.0
@@ -218,15 +264,20 @@ class HyperGameSim(Env):
             reward_def = 0
 
         # Attacker's Reward
-        w_AS = 0.5
-        w_AC = 0.5
+        w_AS = 0.9  # weight for attack success
+        w_AC = 0.1  # weight for attack cost
         if self.attacker.att_counter:
             one_round_att_counter = float(self.attacker.att_counter)
             one_round_att_succ_counter = float(self.attacker.att_succ_counter)
             reward_att = w_AS * (one_round_att_succ_counter/one_round_att_counter) - w_AC * (one_round_att_counter/self.attacker.max_att_budget)
+
         else:
             # the self.attacker.att_counter=0 lead to whole reward=0
             reward_att = 0
+
+        reward = {}
+        reward['def'] = reward_def
+        reward['att'] = reward_att
 
         if self.system.is_mission_Not_end():
             done = False
@@ -238,7 +289,7 @@ class HyperGameSim(Env):
 
         info = {}
         info["mission condition"] = self.system.mission_condition
-        return state, reward_def, reward_att, done, info
+        return state, reward, done, info
 
     def roundBegin(self, action_def, action_att):
         # check if mission complete

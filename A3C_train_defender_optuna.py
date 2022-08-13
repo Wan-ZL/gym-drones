@@ -161,7 +161,8 @@ class Agent(mp.Process):
                  name, global_ep_idx, glob_episode_thred, global_dict, config):
         super(Agent, self).__init__()
         self.env = HyperGameSim()
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+        self.device = torch.device("cpu")   # use GPU cause RuntimeError: _share_filename_: only available on CPU
         print("Local Using", self.device)
         self.local_actor_critic = ActorCritic(input_dims, n_actions,
                                               gamma=config["gamma"], pi_net_struc=config["pi_net_struc"],
@@ -277,7 +278,8 @@ def objective(trial):
     input_dims = temp_env.observation_space.shape
     temp_env.close_env()    # close client for avoiding client limit error
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+    device = torch.device("cpu")    # use GPU cause RuntimeError: _share_filename_: only available on CPU
     print("Share Using", device)
     global_actor_critic = ActorCritic(input_dims, n_actions,
                                       gamma=config["gamma"],
