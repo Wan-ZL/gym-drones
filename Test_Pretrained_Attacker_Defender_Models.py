@@ -15,7 +15,7 @@ from torch.distributions import Categorical
 from Gym_HoneyDrone_Defender_and_Attacker import HyperGameSim
 from multiprocessing import Manager
 from torch.utils.tensorboard import SummaryWriter
-from A3C_model import ActorCritic
+from A3C_model import *
 
 
 def att_def_interaction(defender_model, attacker_model):
@@ -44,6 +44,8 @@ def att_def_interaction(defender_model, attacker_model):
         obser_att = observation['att']
         score_def = 0
         score_att = 0
+        att_succ_counter_one_epi = 0
+        att_counter_one_epi = 0
         while not done:
             # observation, reward_def, reward_att, done, info = env.step(action_def=action_def, action_att=action_att)
             if scenario == 'att':
@@ -67,6 +69,8 @@ def att_def_interaction(defender_model, attacker_model):
             reward_att = reward['att']
             score_def += reward_def
             score_att += reward_att
+            att_succ_counter_one_epi += env.attacker.att_succ_counter
+            att_counter_one_epi += env.attacker.att_counter
             step_counter += 1
         score_def_average = score_def/step_counter
         score_att_average = score_att/ step_counter
@@ -81,12 +85,13 @@ def att_def_interaction(defender_model, attacker_model):
         for HD in env.system.HD_dict.values():
             consumption_all += HD.accumulated_consumption
         writer.add_scalar("Energy Consumption", consumption_all, episode)
-        if env.attacker.att_counter == 0:
+        if att_counter_one_epi == 0:
             att_succ_rate = 0
         else:
-            att_succ_rate = env.attacker.att_succ_counter/env.attacker.att_counter
+            att_succ_rate = att_succ_counter_one_epi/att_counter_one_epi
         writer.add_scalar("Attack Success Rate", att_succ_rate, episode)
-        writer.add_scalar("Mission Success Rate", env.system.scanCompletePercent(), episode)
+        writer.add_scalar("Mission Completion Progress", env.system.scanCompletePercent(), episode)
+        writer.add_scalar("Mission Result (1 succ, 0 fail)", 1 if env.system.scanCompletePercent() == 1 else 0, episode)
     print("--- Simulation Time: %s seconds ---" % round(time.time() - start_time, 1))
     writer.flush()
     writer.close()  # close SummaryWriter of TensorBoard

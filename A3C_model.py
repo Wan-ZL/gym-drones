@@ -31,7 +31,7 @@ class SharedAdam(torch.optim.Adam):
 
 
 class ActorCritic(nn.Module):
-    def __init__(self, input_dims, n_actions, gamma=0.99, pi_net_struc=[128], v_net_struct=[128]):
+    def __init__(self, input_dims, n_actions, gamma=0.99, pi_net_struc=[128], v_net_struct=[128], lr_decay=0.99):
         super(ActorCritic, self).__init__()
 
         self.gamma = gamma
@@ -46,7 +46,7 @@ class ActorCritic(nn.Module):
         # self.v3 = nn.Linear(256, 128)
         # self.pi = nn.Linear(128, n_actions)
         # self.v = nn.Linear(128, 1)
-
+        self.memory_size = 32
         self.rewards = []
         self.actions = []
         self.states = []
@@ -172,23 +172,35 @@ class Agent(mp.Process):
             t_step = 1
             done = False
             observation = self.env.reset()
+            if self.player == "att":
+                the_observation = observation['att']
+            elif self.player == "def":
+                the_observation = observation['def']
+            else:
+                print("Error: player is not specified, using defender's observation")
+                the_observation = observation['def']
             score = 0
             self.local_actor_critic.clear_memory()
             while not done:
-                action = self.local_actor_critic.choose_action(observation)
+                action = self.local_actor_critic.choose_action(the_observation)
                 self.shared_dict[self.player+"_action"][action] += 1
-                observation_, reward_def, reward_att, done, info = self.env.step(action_att=action)
+                observation, reward, done, info = self.env.step(action_att=action)
                 if self.player == "att":
-                    the_reward = reward_att
+                    the_reward = reward['att']
+                    the_observation = observation['att']
                 elif self.player == "def":
-                    the_reward = reward_def
+                    the_reward = reward['def']
+                    the_observation = observation['def']
                 else:
-                    print("player is not specified")
-                    the_reward = reward_def
+                    print("Error: player is not specified, using defender's reward")
+                    the_reward = reward['def']
 
                 score += the_reward
-                self.local_actor_critic.remember(observation, action, the_reward)
-                if t_step % 5 == 0 or done:
+
+                # memory
+                self.local_actor_critic.remember(the_observation, action, the_reward)
+                if t_step % self.memory_size == 0 or done:
+                    print("memory full")
                     loss = self.local_actor_critic.calc_loss(done)
                     self.optimizer.zero_grad()
                     loss.backward()
@@ -201,7 +213,7 @@ class Agent(mp.Process):
                         self.global_actor_critic.state_dict())
                     self.local_actor_critic.clear_memory()
                 t_step += 1
-                observation = observation_
+
 
             with self.episode_idx.get_lock():
                 self.episode_idx.value += 1
