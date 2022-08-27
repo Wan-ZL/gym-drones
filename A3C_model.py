@@ -1,6 +1,6 @@
 '''
 @Project ：gym-drones
-@File    ：A3C_model_v2.py
+@File    ：A3C_model.py
 @Author  ：Zelin Wan
 @Date    ：8/15/22
 '''
@@ -12,12 +12,14 @@ import torch.multiprocessing as mp
 import torch.nn as nn
 import torch.nn.functional as F
 import optuna
+import numpy as np
 
 from torch.distributions import Categorical
 from Gym_HoneyDrone_Defender_and_Attacker import HyperGameSim
 from multiprocessing import Manager
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import ExponentialLR, LambdaLR
+from sys import platform
 
 
 # class SharedAdam(torch.optim.Adam):
@@ -39,9 +41,8 @@ from torch.optim.lr_scheduler import ExponentialLR, LambdaLR
 
 
 class ActorCritic(nn.Module):
-    def __init__(self, input_dims, n_actions, lr=0.01, LR_decay=0.99, gamma=0.99, pi_net_struc=[128], v_net_struct=[128], trial=None):
+    def __init__(self, input_dims, n_actions, lr=0.01, LR_decay=0.99, gamma=0.99, pi_net_struc=[128], v_net_struct=[128], trial=None, fixed_seed=True):
         super(ActorCritic, self).__init__()
-
         self.input_dims = input_dims
         self.n_actions = n_actions
         self.lr = lr
@@ -50,13 +51,15 @@ class ActorCritic(nn.Module):
         self.pi_net_struc = pi_net_struc
         self.v_net_struct = v_net_struct
         self.trial = trial      # save this for optuna pruning
+        self.fixed_seed = fixed_seed        # if true, fixed seed will be used when initialize the model
+        if self.fixed_seed:
+            torch.manual_seed(0)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print("Local Using", self.device)
         self.pi_net = self.build_Net(*input_dims, n_actions, pi_net_struc).to(self.device)
         self.v_net = self.build_Net(*input_dims, 1, v_net_struct).to(self.device)
         self.pi_net.apply(self.init_weight_bias)  # initial weight (normal distribution)
         self.v_net.apply(self.init_weight_bias)  # initial weight (normal distribution)
-
 
         # self.pi1 = nn.Linear(*input_dims, 128)
         # self.v1 = nn.Linear(*input_dims, 128)
@@ -142,14 +145,14 @@ class ActorCritic(nn.Module):
 
         returns = self.calc_R(done)
 
-        # pi, values = self.forward(states)
         pi = self.pi_net(states)
+        probs = torch.softmax(pi, dim=1)
+
         values = self.v_net(states)
 
         values = values.squeeze()
         critic_loss = (returns - values) ** 2
 
-        probs = torch.softmax(pi, dim=1)
         dist = Categorical(probs)
         log_probs = dist.log_prob(actions)
         actor_loss = -log_probs * (returns - values)
@@ -164,6 +167,7 @@ class ActorCritic(nn.Module):
         pi = self.pi_net(state)
         # v = self.v_net(state)
         probs = torch.softmax(pi, dim=1)
+        # print("probs", probs)
         dist = Categorical(probs)
         action = dist.sample().numpy()[0]
 
@@ -182,6 +186,7 @@ class Agent(mp.Process):
                                               gamma=global_actor_critic.gamma, pi_net_struc=global_actor_critic.pi_net_struc,
                                               v_net_struct=global_actor_critic.v_net_struct)
         self.local_actor_critic.load_state_dict(self.global_actor_critic.state_dict())
+        # print("local dict", self.local_actor_critic.state_dict())
         # self.local_actor_critic = copy.deepcopy(global_actor_critic)
 
         self.name_id = name
@@ -212,10 +217,21 @@ class Agent(mp.Process):
                 trial_num_str = str(self.global_actor_critic.trial.number)
             else:
                 trial_num_str = "None"
+
+            if self.shared_dict["on_server"]:
+                path = "/home/zelin/Drone/code_files/data/"
+            else:
+                path = ""
+            writer = SummaryWriter(path + "runs_" + self.player + "/each_run_" + self.shared_dict["start_time"] + "-" +
+                                   self.player + "-" + "-Trial_" + trial_num_str + "-eps")
             # print("creating writer", "runs_"+self.player+"/each_run_" + self.shared_dict["start_time"] + "-" + self.player + "-" + "-Trial_" + trial_num_str + "-eps")
-            writer = SummaryWriter("runs_"+self.player+"/each_run_" + self.shared_dict["start_time"] + "-" + self.player + "-" + "-Trial_" + trial_num_str + "-eps")
+
         else:
             writer = None
+
+        # fix seed for the whole trainning
+        # self.env.set_random_seed()
+        loss_set = []
 
         while self.episode_idx.value < self.glob_episode_thred:
             # Episode start
@@ -230,27 +246,45 @@ class Agent(mp.Process):
                 print("Error: player is not specified, using defender's observation")
                 the_observation = observation['def']
             score = 0
+            oppo_score = 0
             self.local_actor_critic.clear_memory()
             while not done:
                 action = self.local_actor_critic.choose_action(the_observation)
                 self.shared_dict["action"][action] += 1
-                observation, reward, done, info = self.env.step(action_att=action)
+                action_def = None
+                action_att = None
+
+                # determine wether it's defender's action or attacker's action
+                if self.player == "att":
+                    action_att = action
+                elif self.player == "def":
+                    action_def = action
+                else:
+                    print("Error: player is not specified, using action for defender")
+                    action_def = action
+
+                observation, reward, done, info = self.env.step(action_def=action_def, action_att=action_att)
                 if self.player == "att":
                     the_reward = reward['att']
+                    oppo_reward = reward['def']
                     the_observation = observation['att']
                 elif self.player == "def":
                     the_reward = reward['def']
+                    oppo_reward = reward['att']
                     the_observation = observation['def']
                 else:
                     print("Error: player is not specified, using defender's reward")
                     the_reward = reward['def']
+                    oppo_reward = reward['att']
 
-                score += the_reward
+                score += the_reward         # current player's score
+                oppo_score += oppo_reward   # opponent's score
 
                 # memory
                 self.local_actor_critic.remember(the_observation, action, the_reward)
                 if t_step % self.local_actor_critic.batch_size == 0 or done:
                     loss = self.local_actor_critic.calc_loss(done)
+                    loss_set.append(loss.item())
                     self.optimizer.zero_grad()
                     loss.backward()
                     for local_param, global_param in zip(self.local_actor_critic.parameters(),
@@ -268,6 +302,7 @@ class Agent(mp.Process):
 
                 # save data to shared dictionary for tensorboard
                 self.shared_dict["score"].append(score)
+                self.shared_dict["oppo_score"].append(oppo_score)
                 self.shared_dict["lr"].append(self.optimizer.param_groups[0]['lr'])
                 self.shared_dict["eps"].append(self.episode_idx.value)
 
@@ -276,9 +311,16 @@ class Agent(mp.Process):
                 # print("writing", score, self.episode_idx.value)
                 for id in range(self.shared_dict["index"], len(self.shared_dict["eps"])):
                     # write score
-                    writer.add_scalar("Score", self.shared_dict["score"][id], self.shared_dict["eps"][id])
+                    writer.add_scalar("Average Score", self.shared_dict["score"][id], self.shared_dict["eps"][id])
+                    writer.add_scalar("Opponent's Average Score", self.shared_dict["oppo_score"][id], self.shared_dict["eps"][id])
                     # write lr
                     writer.add_scalar("Learning rate", self.shared_dict["lr"][id], self.shared_dict["eps"][id])
+                    # write mission time (step)
+                    writer.add_scalar("Mission Time (step)", t_step, self.shared_dict["eps"][id])
+                    # write loss
+                    writer.add_scalar("Model Loss", sum(loss_set) / len(loss_set),  self.shared_dict["eps"][id])
+                    # mission completion rate
+                    writer.add_scalar("Mission Success Rate (completion rate)", self.env.system.scanCompletePercent(), self.shared_dict["eps"][id])
                 # update index
                 self.shared_dict["index"] = len(self.shared_dict["eps"])
 

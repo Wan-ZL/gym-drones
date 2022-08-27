@@ -1,7 +1,5 @@
 from gym import Env
 from gym.spaces import Discrete, Box
-import numpy as np
-import random
 import gym
 import math
 import matplotlib
@@ -48,7 +46,7 @@ ObsType = TypeVar("ObsType")
 
 
 class HyperGameSim(Env):
-    def __init__(self):
+    def __init__(self, fixed_seed=True):
         # variable for bullet drone env
         self.print = False
         self.gui = False
@@ -69,6 +67,7 @@ class HyperGameSim(Env):
         self.close_env()  # close client in init for avoiding client limit error
 
         # variable for current env
+        self.fixed_seed = fixed_seed
         self.action_space = dict()
         self.action_space['def'] = Discrete(self.defender.number_of_strategy)
         self.action_space['att'] = Discrete(self.attacker.number_of_strategy)
@@ -81,6 +80,13 @@ class HyperGameSim(Env):
         high_array = np.array([self.defender.system.mission_max_duration, 1.]+[20. for _ in range(self.system.num_MD+self.system.num_HD)])
         self.observation_space['att'] = Box(low=low_array, high=high_array)
 
+
+    def set_random_seed(self):
+        # reset seed for new episode
+        if self.fixed_seed:
+            np.random.seed(0)
+            random.seed(0)
+
     # close client. This function check the connection status before close it. Use this function to avoid client limit.
     def close_env(self):
         if self.env is not None:
@@ -91,6 +97,9 @@ class HyperGameSim(Env):
     def reset(self, *args):
         self.start_time = time.time()
         self.initDroneEnv()
+
+        self.set_random_seed()
+
         # def
         # mission_complete_ratio = self.system.scanCompletePercent()
         state_def = [self.system.mission_duration, self.system.scanCompletePercent()]
@@ -219,10 +228,12 @@ class HyperGameSim(Env):
 
     # step inherent from gym.step, but changed the return format (two rewards)
     def step(self, action_def=None, action_att=None) -> Tuple[dict, dict, bool, dict]:
+
         if action_def is None:
-            action_def = random.randint(0, 9)
+            action_def = np.random.randint(0, 9)
         if action_att is None:
-            action_att = random.randint(0, 9)
+            action_att = np.random.randint(0, 9)
+        # print("action_def", action_def, "action_att", action_att)
 
         # pybullet environment
         self.roundBegin(action_def, action_att)
