@@ -1,10 +1,11 @@
 '''
-@Project ：gym-drones
-@File    ：A3C_model.py
-@Author  ：Zelin Wan
-@Date    ：8/15/22
+Project     ：gym-drones
+File        ：A3C_model.py
+Author      ：Zelin Wan
+Date        ：8/15/22
+Description : This is the model of A3C.
 '''
-import copy
+
 import os
 os.environ["OMP_NUM_THREADS"] = "1" # Error #34: System unable to allocate necessary resources for OMP thread:"
 import torch as torch
@@ -13,47 +14,57 @@ import torch.nn as nn
 import torch.nn.functional as F
 import optuna
 import numpy as np
+import gym
+import copy
 
 from torch.distributions import Categorical
-from Gym_HoneyDrone_Defender_and_Attacker import HyperGameSim
+# from Gym_HoneyDrone_Defender_and_Attacker import HyperGameSim
 from multiprocessing import Manager
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import ExponentialLR, LambdaLR
 from sys import platform
 
 
-# class SharedAdam(torch.optim.Adam):
-#     def __init__(self, params, lr=1e-3, betas=(0.9, 0.99), eps=1e-8,
-#                  weight_decay=0):
-#         super(SharedAdam, self).__init__(params, lr=lr, betas=betas, eps=eps,
-#                                          weight_decay=weight_decay)
-#
-#
-#         for group in self.param_groups:
-#             for p in group['params']:
-#                 state = self.state[p]
-#                 state['step'] = 0
-#                 state['exp_avg'] = torch.zeros_like(p.data)
-#                 state['exp_avg_sq'] = torch.zeros_like(p.data)
-#
-#                 state['exp_avg'].share_memory_()
-#                 state['exp_avg_sq'].share_memory_()
+class SharedAdam(torch.optim.Adam):
+    def __init__(self, params, lr=1e-3):
+        super(SharedAdam, self).__init__(params, lr=lr)
+
+
+        for group in self.param_groups:
+            for p in group['params']:
+                state = self.state[p]
+                state['step'] = 0
+                state['exp_avg'] = torch.zeros_like(p.data)
+                state['exp_avg_sq'] = torch.zeros_like(p.data)
+
+                state['exp_avg'].share_memory_()
+                state['exp_avg_sq'].share_memory_()
 
 
 class ActorCritic(nn.Module):
-    def __init__(self, input_dims, n_actions, lr=0.01, LR_decay=0.99, gamma=0.99, pi_net_struc=[128], v_net_struct=[128], trial=None, fixed_seed=True):
+    def __init__(self, input_dims, n_actions, lr=0.01, LR_decay=0.99, gamma=0.99, epsilon = 0.1, epsilon_decay = 0.99,
+                 pi_net_struc=None, v_net_struct=None, trial=None, fixed_seed=True):
         super(ActorCritic, self).__init__()
+
         self.input_dims = input_dims
         self.n_actions = n_actions
         self.lr = lr
         self.LR_decay = LR_decay
         self.gamma = gamma
-        self.pi_net_struc = pi_net_struc
-        self.v_net_struct = v_net_struct
+        self.epsilon = epsilon
+        self.epsilon_decay = epsilon_decay
+        if pi_net_struc is None:
+            pi_net_struc = [64, 64]     # default 64, 64 hidden layers if not specify
+        else:
+            self.pi_net_struc = pi_net_struc
+        if v_net_struct is None:
+            v_net_struct = [64, 64]     # default 64, 64 hidden layers if not specify
+        else:
+            self.v_net_struct = v_net_struct
         self.trial = trial      # save this for optuna pruning
         self.fixed_seed = fixed_seed        # if true, fixed seed will be used when initialize the model
-        if self.fixed_seed:
-            torch.manual_seed(0)
+        # if self.fixed_seed:
+        #     torch.manual_seed(0)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print("Local Using", self.device)
         self.pi_net = self.build_Net(*input_dims, n_actions, pi_net_struc).to(self.device)
@@ -69,14 +80,20 @@ class ActorCritic(nn.Module):
         # self.v3 = nn.Linear(256, 128)
         # self.pi = nn.Linear(128, n_actions)
         # self.v = nn.Linear(128, 1)
-        self.batch_size = 32
+        self.t_max = 5      # t_max as mentioned in A3C paper
         self.rewards = []
         self.actions = []
         self.states = []
         self.global_ep = mp.Value('i', 0)
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
+        # self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
+        self.optimizer = SharedAdam(self.parameters(), lr=self.lr)
         self.scheduler = LambdaLR(self.optimizer, lr_lambda=self.lambda_function)
         self.pruning = False
+
+    def epsilon_decay_step(self):
+        new_epsilon = self.epsilon * self.epsilon_decay
+        # print("new new_epsilon", new_epsilon)
+        self.epsilon = new_epsilon
 
     def lambda_function(self, epoch):  # epoch increase one when scheduler.step() is called
         return self.LR_decay ** epoch
@@ -123,12 +140,47 @@ class ActorCritic(nn.Module):
     #
     #     return pi, v
 
-    def calc_R(self, done):
-        states = torch.tensor(self.states, dtype=torch.float)
-        # _, v = self.forward(states)
-        v = self.v_net(states)
+    # def calc_R(self, done):
+    #     '''
+    #
+    #     Args:
+    #         done: game end or not
+    #
+    #     Returns: the return with size t_max. This is the target for value network to calculate loss.
+    #
+    #     '''
+    #     states = torch.tensor(self.states, dtype=torch.float)
+    #     # _, v = self.forward(states)
+    #     v = self.v_net(states)
+    #
+    #     R = v[-1] * (1 - int(done))
+    #
+    #     batch_return = []
+    #     for reward in self.rewards[::-1]:
+    #         R = reward + self.gamma * R
+    #         batch_return.append(R)
+    #     batch_return.reverse()
+    #     batch_return = torch.tensor(batch_return, dtype=torch.float)
+    #
+    #     return batch_return
 
-        R = v[-1] * (1 - int(done))
+    def calc_R(self, done, observation_new):
+        '''
+
+        Args:
+            done: game end or not
+
+        Returns: the discounted return with size t_max. This is the target for value network to calculate loss.
+
+        '''
+        states = torch.tensor(self.states, dtype=torch.float)
+        observation_new = torch.tensor(observation_new, dtype=torch.float)
+        # _, v = self.forward(states)
+        # v = self.v_net(states)
+        v_next = self.v_net(observation_new)    # v for the state_{t_max+1}
+
+        # TODO: discuss, should I use v_net(states[-1] or v_net(observation_new) ?
+        R = v_next * (1 - int(done))
 
         batch_return = []
         for reward in self.rewards[::-1]:
@@ -139,11 +191,11 @@ class ActorCritic(nn.Module):
 
         return batch_return
 
-    def calc_loss(self, done):
+    def calc_loss(self, done, observation_new):
         states = torch.tensor(self.states, dtype=torch.float)
         actions = torch.tensor(self.actions, dtype=torch.float)
 
-        returns = self.calc_R(done)
+        returns = self.calc_R(done, observation_new)     # TODO: find out what is this
 
         pi = self.pi_net(states)
         probs = torch.softmax(pi, dim=1)
@@ -158,10 +210,18 @@ class ActorCritic(nn.Module):
         actor_loss = -log_probs * (returns - values)
 
         total_loss = (critic_loss + actor_loss).mean()
-
-        return total_loss
+        # print("total_loss", total_loss)
+        # print("critic_loss", critic_loss)
+        # print("actor_loss", actor_loss)
+        return total_loss, critic_loss.mean(), actor_loss.mean()
 
     def choose_action(self, observation):
+
+        if torch.rand((1,)).item() < self.epsilon:
+            # random action
+            print("Random action. Epsilon is", self.epsilon)
+            return torch.randint(0, self.n_actions, (1,)).item()
+
         state = torch.tensor([observation], dtype=torch.float)
         # pi, v = self.forward(state)
         pi = self.pi_net(state)
@@ -178,7 +238,8 @@ class Agent(mp.Process):
     def __init__(self, global_actor_critic, input_dims, n_actions,
                  name, glob_episode_thred, global_dict, config, player="player"):
         super(Agent, self).__init__()
-        self.env = HyperGameSim()
+        # self.env = HyperGameSim()
+        self.env = gym.make('CartPole-v1')
         # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # print("Local Using", self.device)
         self.global_actor_critic = global_actor_critic
@@ -231,20 +292,24 @@ class Agent(mp.Process):
 
         # fix seed for the whole trainning
         # self.env.set_random_seed()
-        loss_set = []
+        total_loss_set = []
+        critic_loss_set = []
+        actor_loss_set = []
 
         while self.episode_idx.value < self.glob_episode_thred:
             # Episode start
+            # self.env.render(mode = "human")
             t_step = 1
             done = False
             observation = self.env.reset()
-            if self.player == "att":
-                the_observation = observation['att']
-            elif self.player == "def":
-                the_observation = observation['def']
-            else:
-                print("Error: player is not specified, using defender's observation")
-                the_observation = observation['def']
+            # if self.player == "att":
+            #     the_observation = observation['att']
+            # elif self.player == "def":
+            #     the_observation = observation['def']
+            # else:
+            #     print("Error: player is not specified, using defender's observation")
+            #     the_observation = observation['def']
+            the_observation = observation       # TODO: this is a test
             score = 0
             oppo_score = 0
             self.local_actor_critic.clear_memory()
@@ -263,47 +328,67 @@ class Agent(mp.Process):
                     print("Error: player is not specified, using action for defender")
                     action_def = action
 
-                observation, reward, done, info = self.env.step(action_def=action_def, action_att=action_att)
-                if self.player == "att":
-                    the_reward = reward['att']
-                    oppo_reward = reward['def']
-                    the_observation = observation['att']
-                elif self.player == "def":
-                    the_reward = reward['def']
-                    oppo_reward = reward['att']
-                    the_observation = observation['def']
-                else:
-                    print("Error: player is not specified, using defender's reward")
-                    the_reward = reward['def']
-                    oppo_reward = reward['att']
+                # observation_new, reward, done, info = self.env.step(action_def=action_def, action_att=action_att)
+
+                # if self.player == "att":
+                #     the_reward = reward['att']
+                #     oppo_reward = reward['def']
+                #     the_observation_new = observation_new['att']
+                # elif self.player == "def":
+                #     the_reward = reward['def']
+                #     oppo_reward = reward['att']
+                #     the_observation_new = observation_new['def']
+                # else:
+                #     print("Error: player is not specified, using defender's reward")
+                #     the_reward = reward['def']
+                #     oppo_reward = reward['att']
+                #     the_observation_new = observation_new['def']
+
+                observation_new, reward, done, info = self.env.step(action) # TODO: this is test
+
+                the_observation_new = observation_new  # TODO: this is test
+                the_reward = reward
+                oppo_reward = 0
 
                 score += the_reward         # current player's score
                 oppo_score += oppo_reward   # opponent's score
 
                 # memory
                 self.local_actor_critic.remember(the_observation, action, the_reward)
-                if t_step % self.local_actor_critic.batch_size == 0 or done:
-                    loss = self.local_actor_critic.calc_loss(done)
-                    loss_set.append(loss.item())
+                if t_step % self.local_actor_critic.t_max == 0 or done:
+                    total_loss, critic_loss, actor_loss = self.local_actor_critic.calc_loss(done, the_observation_new)
+
+                    total_loss_set.append(total_loss.item())
+                    critic_loss_set.append(critic_loss.item())
+                    actor_loss_set.append(actor_loss.item())
+
                     self.optimizer.zero_grad()
-                    loss.backward()
+                    total_loss.backward()
                     for local_param, global_param in zip(self.local_actor_critic.parameters(),
                                                          self.global_actor_critic.parameters()):
                         global_param._grad = local_param.grad
                     self.optimizer.step()
+                    # copy global parameter to local parameter
                     self.local_actor_critic.load_state_dict(self.global_actor_critic.state_dict())
+                    # copy global epsilon to local epsilon
+                    self.local_actor_critic.epsilon = self.global_actor_critic.epsilon
+                    # clear memory
                     self.local_actor_critic.clear_memory()
+
                 t_step += 1
+                the_observation = the_observation_new
 
 
             with self.episode_idx.get_lock():
                 self.episode_idx.value += 1
                 self.scheduler.step()  # update learning rate each episode
+                self.global_actor_critic.epsilon_decay_step()   # update epsilon each episode
 
                 # save data to shared dictionary for tensorboard
                 self.shared_dict["score"].append(score)
                 self.shared_dict["oppo_score"].append(oppo_score)
                 self.shared_dict["lr"].append(self.optimizer.param_groups[0]['lr'])
+                self.shared_dict["epsilon"].append(self.global_actor_critic.epsilon)
                 self.shared_dict["eps"].append(self.episode_idx.value)
 
             # tensorboard writer. Only agent (index 0) can write to tensorboard
@@ -315,12 +400,19 @@ class Agent(mp.Process):
                     writer.add_scalar("Opponent's Average Score", self.shared_dict["oppo_score"][id], self.shared_dict["eps"][id])
                     # write lr
                     writer.add_scalar("Learning rate", self.shared_dict["lr"][id], self.shared_dict["eps"][id])
+                    # write epsilon
+                    writer.add_scalar("Epsilon (random action probability)", self.shared_dict["epsilon"][id], self.shared_dict["eps"][id])
                     # write mission time (step)
                     writer.add_scalar("Mission Time (step)", t_step, self.shared_dict["eps"][id])
                     # write loss
-                    writer.add_scalar("Model Loss", sum(loss_set) / len(loss_set),  self.shared_dict["eps"][id])
+                    writer.add_scalar("Model's Total Loss", sum(total_loss_set) / len(total_loss_set),
+                                      self.shared_dict["eps"][id])
+                    writer.add_scalar("Model's Critic Loss", sum(critic_loss_set) / len(critic_loss_set),
+                                      self.shared_dict["eps"][id])
+                    writer.add_scalar("Model's Actor Loss", sum(actor_loss_set) / len(actor_loss_set),
+                                      self.shared_dict["eps"][id])
                     # mission completion rate
-                    writer.add_scalar("Mission Success Rate (completion rate)", self.env.system.scanCompletePercent(), self.shared_dict["eps"][id])
+                    # writer.add_scalar("Mission Success Rate (completion rate)", self.env.system.scanCompletePercent(), self.shared_dict["eps"][id])   # TODO: comment out for test
                 # update index
                 self.shared_dict["index"] = len(self.shared_dict["eps"])
 

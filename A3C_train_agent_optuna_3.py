@@ -1,0 +1,198 @@
+'''
+Project     ：gym-drones 
+File        ：A3C_train_agent_optuna_3.py
+Author      ：Zelin Wan
+Date        ：9/3/22
+Description : 
+'''
+
+import torch.multiprocessing as mp
+import os
+os.environ["OMP_NUM_THREADS"] = "1"
+import numpy as np
+import optuna
+import random
+import time
+
+from shared_adam import SharedAdam
+from A3C_model_3 import *
+from sys import platform
+from multiprocessing import Manager
+from utils import get_last_ten_ave
+from torch.utils.tensorboard import SummaryWriter
+
+
+
+def objective(trial, fixed_seed=True, on_server=True, is_defender=True):
+    start_time = time.time()
+    if is_defender:
+        player_name = 'def'
+    else:
+        player_name = 'att'
+
+    if trial is not None:
+        trial_num_str = str(trial.number)
+    else:
+        trial_num_str = "None"
+
+    # This Configuration May Be Changed By Optuna:
+    # glob_episode_thred: total number episode runs,
+    # min_episode: minimum number of episode allowed to run before optuna pruning,
+    # gamma: used to discount future reward, lr: learning rate, LR_decay: learning rate decay,
+    # epsilon: probability of doing random action, epsilon_decay: epsilon decay,
+    # pi_net_struc: structure of policy network, v_net_struct: structure of value network.
+    config = dict(glob_episode_thred=1000, min_episode=1000, gamma=0.99, lr=0.0001, LR_decay=0.99, epsilon=0.1,
+                  epsilon_decay=0.9, pi_net_struc=[128], v_net_struct=[128])
+
+    # Suggest values of the hyperparameters using a trial object.
+    if trial is not None:
+        config["gamma"] = trial.suggest_loguniform('gamma', 0.9, 0.99)
+        config["lr"] = trial.suggest_loguniform('lr', 1e-5, 1e-2)
+        config["LR_decay"] = trial.suggest_loguniform('LR_decay', 0.95, 0.999)  # since scheduler is not use. This one has no impact to reward
+        config["epsilon"] = trial.suggest_loguniform('epsilon', 0.01, 0.5)
+        config["epsilon_decay"] = trial.suggest_loguniform('epsilon_decay', 0.9, 0.9)
+        # network structure
+        # pi_n_layers = trial.suggest_int('pi_n_layers', 3, 5)  # total number of layer
+        # config["pi_net_struc"] = []     # Reset before append
+        # for i in range(pi_n_layers):
+        #     config["pi_net_struc"].append(trial.suggest_int(f'pi_n_units_l{i}', 32, 128, 32))   # try various nodes each layer
+        # v_n_layers = trial.suggest_int('v_n_layers', 3, 5)  # total number of layer
+        # config["v_net_struct"] = []     # Reset before append
+        # for i in range(v_n_layers):
+        #     config["v_net_struct"].append(trial.suggest_int(f'v_n_units_l{i}', 32, 128, 32))  # try various nodes each layer
+    print("config", config)
+
+    env = gym.make('CartPole-v1')
+    input_dims = env.observation_space.shape[0]
+    n_actions = env.action_space.n
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("Share Using", device)
+
+    glob_AC = ActorCritic(input_dims, n_actions, fixed_seed).to(device)  # Global Actor Critic
+    print("global_actor_critic", glob_AC)
+    glob_AC.share_memory()  # share the global parameters in multiprocessing
+    optim = SharedAdam(glob_AC.parameters(), lr=config["lr"])  # global optimizer
+
+    # def lambda_function(epoch):  # epoch increase one when scheduler.step() is called
+    #     return config["LR_decay"] ** epoch
+    # scheduler = LambdaLR(optim, lr_lambda=lambda_function)
+
+
+    shared_dict = {}
+    shared_dict['global_ep'] = mp.Value('i', 0)
+    shared_dict['glob_r_list'] = Manager().list()
+    shared_dict["start_time"] = str(start_time)
+    shared_dict['eps_writer'] = mp.Queue()      # '_writer' means it will be used for tensorboard writer
+    shared_dict['score_writer'] = mp.Queue()
+    shared_dict['oppo_score_writer'] = mp.Queue()
+    shared_dict['lr_writer'] = mp.Queue()
+    shared_dict['t_loss_writer'] = mp.Queue()   # total loss of actor critic
+    shared_dict['c_loss_writer'] = mp.Queue()   # loss of critic
+    shared_dict['a_loss_writer'] = mp.Queue()   # loss of actor
+    shared_dict['on_server'] = on_server
+    # global_ep_r = mp.Value('d', 0.)
+
+    # parallel training
+    if on_server:
+        num_worker = 128  # mp.cpu_count()     # update this for matching server's resources
+    else:
+        num_worker = 8
+    workers = [Agent(glob_AC, optim, shared_dict=shared_dict, gamma=config["gamma"],
+                     MAX_EP=config["glob_episode_thred"], fixed_seed=fixed_seed, trial=trial,
+                     name_id=i, player=player_name) for i in range(num_worker)]
+
+    [w.start() for w in workers]
+    [w.join() for w in workers]
+
+    print("--- Simulation Time: %s seconds ---" % round(time.time() - start_time, 1))
+
+    # ========= Save Data for Optuna =========
+    score_list = [ele for ele in shared_dict['glob_r_list']]    # get reward of all local agents
+    last_10_per_reward_mean = get_last_ten_ave(score_list)
+
+
+    # ========= Save global model =========
+    # run 'tensorboard --logdir=runs' in terminal to start TensorBoard.
+    if on_server:
+        path = "/home/zelin/Drone/code_files/data/" + player_name
+    else:
+        path = "/Users/wanzelin/办公/gym-drones/data/A3C/" + player_name
+    os.makedirs(path + "/model", exist_ok=True)
+    torch.save(glob_AC.state_dict(),
+               path + "/model/trained_A3C_" + str(start_time) + "_" + player_name + "_Trial_" + trial_num_str)
+
+
+    # ========= Write Hparameter to Tensorboard =========
+    # convert list in self.config to integers
+    temp_config = {}
+    for key, value in config.items():
+        if key == 'pi_net_struc':
+            temp_config['pi_net_num'] = len(value)
+            for index, num_node in enumerate(value):
+                temp_config['pi_net' + str(index)] = num_node
+        elif key == 'v_net_struct':
+            temp_config['v_net_num'] = len(value)
+            for index, num_node in enumerate(value):
+                temp_config['v_net' + str(index)] = num_node
+        else:
+            temp_config[key] = value
+    if on_server:
+        path = "/home/zelin/Drone/code_files/data/"
+    else:
+        path = ""
+    writer_hparam = SummaryWriter(log_dir=path + "runs_" + player_name + "/each_run_" + str(start_time) + "-" + player_name +
+                                  "-Trial_" + trial_num_str + "-hparm")
+
+    writer_hparam.add_hparams(temp_config, {'return_reward': last_10_per_reward_mean})  # add for Hyperparameter Tuning
+    writer_hparam.flush()
+    writer_hparam.close()
+
+    return last_10_per_reward_mean  # return average value
+
+
+if __name__ == '__main__':
+    is_defender = True  # True means train a defender RL, False means train an attacker RL
+    test_mode = True  # True means use preset hyperparameter, and optuna will not be used.
+    fixed_seed = True # True means the seeds for pytorch, numpy, and python will be fixed.
+
+    if is_defender:
+        player_name = 'def'
+        print("running for defender")
+    else:
+        player_name = 'att'
+        print("running for attacker")
+
+
+    if fixed_seed:
+        # torch.manual_seed(0)
+        np.random.seed(0)
+        random.seed(0)
+
+    if platform == "darwin":
+        on_server = False
+    else:
+        on_server = True
+    # objective(None)
+    # 3. Create a study object and optimize the objective function.
+    # /home/zelin/Drone/data
+    if test_mode:
+        print("testing mode")
+        objective(None, fixed_seed=fixed_seed, on_server=on_server, is_defender=is_defender)
+    else:
+        print("training mode")
+        if on_server:
+            db_path = "/home/zelin/Drone/code_files/data/"+player_name+"/"
+            os.makedirs(db_path, exist_ok=True)
+            study = optuna.create_study(direction='maximize', study_name="A3C-hyperparameter-study",
+                                        storage="sqlite://///"+db_path+"HyperPara_database.db",
+                                        load_if_exists=True)
+        else:
+            db_path = "/Users/wanzelin/办公/gym-drones/data/"+player_name+"/"
+            os.makedirs(db_path, exist_ok=True)
+            study = optuna.create_study(direction='maximize', study_name="A3C-hyperparameter-study",
+                                        storage="sqlite:////"+db_path+"HyperPara_database.db",
+                                        load_if_exists=True)
+        study.optimize(lambda trial: objective(trial, fixed_seed, on_server, is_defender), n_trials=100)
+
+

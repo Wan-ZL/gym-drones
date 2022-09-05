@@ -1,22 +1,12 @@
-# Code is heavily inspired by Morvan Zhou's code. Please check out
-# his work at github.com/MorvanZhou/pytorch-A3C
-import os
-import pickle
-import time
-from copy import copy
-
 import gym
-import torch as torch
+import torch as T
 import torch.multiprocessing as mp
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Categorical
-from Gym_HoneyDrone_defender_only import HyperGameSim
-from multiprocessing import Manager
-from torch.utils.tensorboard import SummaryWriter
 
 
-class SharedAdam(torch.optim.Adam):
+class SharedAdam(T.optim.Adam):
     def __init__(self, params, lr=1e-3, betas=(0.9, 0.99), eps=1e-8,
                  weight_decay=0):
         super(SharedAdam, self).__init__(params, lr=lr, betas=betas, eps=eps,
@@ -26,8 +16,8 @@ class SharedAdam(torch.optim.Adam):
             for p in group['params']:
                 state = self.state[p]
                 state['step'] = 0
-                state['exp_avg'] = torch.zeros_like(p.data)
-                state['exp_avg_sq'] = torch.zeros_like(p.data)
+                state['exp_avg'] = T.zeros_like(p.data)
+                state['exp_avg_sq'] = T.zeros_like(p.data)
 
                 state['exp_avg'].share_memory_()
                 state['exp_avg_sq'].share_memory_()
@@ -38,19 +28,24 @@ class ActorCritic(nn.Module):
         super(ActorCritic, self).__init__()
 
         self.gamma = gamma
-
+        T.manual_seed(1)
         self.pi1 = nn.Linear(*input_dims, 128)
         self.v1 = nn.Linear(*input_dims, 128)
-        self.pi2 = nn.Linear(128, 256)
-        self.v2 = nn.Linear(128, 256)
-        self.pi3 = nn.Linear(256, 128)
-        self.v3 = nn.Linear(256, 128)
         self.pi = nn.Linear(128, n_actions)
         self.v = nn.Linear(128, 1)
+        self.init_weight_bias(self.pi1)
+        self.init_weight_bias(self.v1)
+        self.init_weight_bias(self.pi)
+        self.init_weight_bias(self.v)
 
         self.rewards = []
         self.actions = []
         self.states = []
+
+    def init_weight_bias(self, layer):
+        if type(layer) == nn.Linear:
+            nn.init.xavier_normal_(layer.weight, gain=nn.init.calculate_gain('relu'))  # use normal distribution
+            nn.init.normal_(layer.bias, std=1 / layer.in_features)
 
     def remember(self, state, action, reward):
         self.states.append(state)
@@ -66,20 +61,13 @@ class ActorCritic(nn.Module):
         pi1 = F.relu(self.pi1(state))
         v1 = F.relu(self.v1(state))
 
-        pi2 = self.pi2(pi1)
-        v2 = self.v2(v1)
-
-        pi3 = F.relu(self.pi3(pi2))
-        v3 = F.relu(self.v3(v2))
-
-
-        pi = self.pi(pi3)
-        v = self.v(v3)
+        pi = self.pi(pi1)
+        v = self.v(v1)
 
         return pi, v
 
     def calc_R(self, done):
-        states = torch.tensor(self.states, dtype=torch.float)
+        states = T.tensor(self.states, dtype=T.float)
         _, v = self.forward(states)
 
         R = v[-1] * (1 - int(done))
@@ -89,13 +77,13 @@ class ActorCritic(nn.Module):
             R = reward + self.gamma * R
             batch_return.append(R)
         batch_return.reverse()
-        batch_return = torch.tensor(batch_return, dtype=torch.float)
+        batch_return = T.tensor(batch_return, dtype=T.float)
 
         return batch_return
 
     def calc_loss(self, done):
-        states = torch.tensor(self.states, dtype=torch.float)
-        actions = torch.tensor(self.actions, dtype=torch.float)
+        states = T.tensor(self.states, dtype=T.float)
+        actions = T.tensor(self.actions, dtype=T.float)
 
         returns = self.calc_R(done)
 
@@ -103,7 +91,7 @@ class ActorCritic(nn.Module):
         values = values.squeeze()
         critic_loss = (returns - values) ** 2
 
-        probs = torch.softmax(pi, dim=1)
+        probs = T.softmax(pi, dim=1)
         dist = Categorical(probs)
         log_probs = dist.log_prob(actions)
         actor_loss = -log_probs * (returns - values)
@@ -113,9 +101,9 @@ class ActorCritic(nn.Module):
         return total_loss
 
     def choose_action(self, observation):
-        state = torch.tensor([observation], dtype=torch.float)
+        state = T.tensor([observation], dtype=T.float)
         pi, v = self.forward(state)
-        probs = torch.softmax(pi, dim=1)
+        probs = T.softmax(pi, dim=1)
         dist = Categorical(probs)
         action = dist.sample().numpy()[0]
 
@@ -124,41 +112,30 @@ class ActorCritic(nn.Module):
 
 class Agent(mp.Process):
     def __init__(self, global_actor_critic, optimizer, input_dims, n_actions,
-                 gamma, lr, name, global_ep_idx, env_id, glob_episode_thred, global_dict):
+                 gamma, lr, name, global_ep_idx, env_id):
         super(Agent, self).__init__()
-        # self.env = gym.make(env_id)
-        self.env = HyperGameSim()
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print("Local Using", device)
-        self.local_actor_critic = ActorCritic(input_dims, n_actions, gamma).to(self.device)
+        self.local_actor_critic = ActorCritic(input_dims, n_actions, gamma)
         self.global_actor_critic = global_actor_critic
         self.name = 'w%02i' % name
-        print("creating: "+self.name)
         self.episode_idx = global_ep_idx
+        self.env = gym.make(env_id)
         self.optimizer = optimizer
-        self.glob_episode_thred = glob_episode_thred
-        self.shared_dict = global_dict
-        # self.writer = writer
 
     def run(self):
-        # create writer for TensorBoard
-        # run 'tensorboard --logdir=runs' in terminal to start TensorBoard.
-        writer = SummaryWriter("runs/"+self.shared_dict["start_time"])
-
-        while self.episode_idx.value < self.glob_episode_thred:
-            # Episode start
-            t_step = 1
+        t_step = 1
+        N_GAMES = 100000
+        T_MAX = 5
+        while self.episode_idx.value < N_GAMES:
             done = False
             observation = self.env.reset()
             score = 0
             self.local_actor_critic.clear_memory()
             while not done:
                 action = self.local_actor_critic.choose_action(observation)
-                self.shared_dict["def_action"][action] += 1
                 observation_, reward, done, info = self.env.step(action)
                 score += reward
                 self.local_actor_critic.remember(observation, action, reward)
-                if t_step % 5 == 0 or done:
+                if t_step % T_MAX == 0 or done:
                     loss = self.local_actor_critic.calc_loss(done)
                     self.optimizer.zero_grad()
                     loss.backward()
@@ -174,52 +151,21 @@ class Agent(mp.Process):
                 observation = observation_
             with self.episode_idx.get_lock():
                 self.episode_idx.value += 1
-
-            # this one commented out for save memory, uncomment as needed.
-            # save data
-            # self.shared_dict["reward"].append(score)
-            # self.shared_dict["t_step"].append(t_step)       # number of round for a game
-
-
-            print(self.name, 'global-episode ', self.episode_idx.value, 'reward %.1f' % score)
-            writer.add_scalar("Score", score, self.episode_idx.value)
-
-        writer.flush()
-        writer.close()  # close SummaryWriter of TensorBoard
-        return
-
+            print(self.name, 'episode ', self.episode_idx.value, 'reward %.1f' % score)
 
 
 if __name__ == '__main__':
-
-    start_time = time.time()
     lr = 1e-4
-    env_id = 'CartPole-v0'
-    # temp_env = gym.make(env_id)
-    temp_env = HyperGameSim()
-    n_actions = temp_env.action_space.n
-    input_dims = temp_env.observation_space.shape
+    env_id = 'CartPole-v1'
+    n_actions = 2
+    input_dims = [4]
+    N_GAMES = 100000
     T_MAX = 5
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("Share Using", device)
-    global_actor_critic = ActorCritic(input_dims, n_actions).to(device)        # global NN
-    print(global_actor_critic)
+    global_actor_critic = ActorCritic(input_dims, n_actions)
     global_actor_critic.share_memory()
     optim = SharedAdam(global_actor_critic.parameters(), lr=lr,
                        betas=(0.92, 0.999))
     global_ep = mp.Value('i', 0)
-
-    glob_episode_thred = 1  # total number of episodes to run
-    num_worker = 2 # mp.cpu_count()     # update this for matching computer resources
-
-    shared_dict = {}
-    shared_dict["reward"] = Manager().list()  # use Manager().list() to create a shared list between processes
-    shared_dict["t_step"] = Manager().list()
-    shared_dict["def_action"] = mp.Array('i', n_actions)
-    shared_dict["start_time"] = str(start_time)
-    # shared_dict["reward"] = mp.Array('d', glob_episode_thred + num_worker)        # save simulation data ('d' means double-type)
-
-
 
     workers = [Agent(global_actor_critic,
                      optim,
@@ -229,38 +175,6 @@ if __name__ == '__main__':
                      lr=lr,
                      name=i,
                      global_ep_idx=global_ep,
-                     env_id=env_id, glob_episode_thred=glob_episode_thred, global_dict=shared_dict) for i in range(num_worker)]
+                     env_id=env_id) for i in range(mp.cpu_count())]
     [w.start() for w in workers]
     [w.join() for w in workers]
-
-    # Saving data to file
-    # Reward
-    global_reward = [ele for ele in shared_dict["reward"]]     # convert mp.Array to python list
-    print(f"reward {global_reward}")
-    os.makedirs("data/A3C", exist_ok=True)
-    the_file = open("data/A3C/reward_train_all_result.pkl",
-                    "wb+")
-    pickle.dump(global_reward, the_file)
-    the_file.close()
-
-    # t_step (number of round in a game)
-    global_t_step = [ele for ele in shared_dict["t_step"]]
-    print(f"t_step {global_t_step}")
-    os.makedirs("data/A3C", exist_ok=True)
-    the_file = open("data/A3C/t_step_all_result.pkl",
-                    "wb+")
-    pickle.dump(global_t_step, the_file)
-    the_file.close()
-
-    # defender action frequency
-    global_def_action = [ele for ele in shared_dict["def_action"]]
-    print(f"def_action {global_def_action}")
-    os.makedirs("data/A3C", exist_ok=True)
-    the_file = open("data/A3C/def_action_all_result.pkl",
-                    "wb+")
-    pickle.dump(global_def_action, the_file)
-    the_file.close()
-
-    print("--- Simulation Time: %s seconds ---" % round(time.time() - start_time, 1))
-
-

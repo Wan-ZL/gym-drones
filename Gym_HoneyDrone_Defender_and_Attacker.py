@@ -1,3 +1,12 @@
+'''
+Project     ：gym-drones
+File        ：Gym_HoneyDrone_Defender_and_Attacker.py
+Author      ：Zelin Wan
+Date        ：6/25/22
+Description : This is gym-based environment. It takes two actions (one from defender, one from attacker), and return
+two rewards, two observations (one for defender, one for attacker).
+'''
+
 from gym import Env
 from gym.spaces import Discrete, Box
 import gym
@@ -228,12 +237,19 @@ class HyperGameSim(Env):
 
     # step inherent from gym.step, but changed the return format (two rewards)
     def step(self, action_def=None, action_att=None) -> Tuple[dict, dict, bool, dict]:
+        '''
+        Args:
+            action_def: defender's action (if no given, random action will be applied)
+            action_att: attacker's action (if no given, random action will be applied)
+
+        Returns: state['def']+state['att'], reward['def']+reward['att'], done, info
+        '''
 
         if action_def is None:
             action_def = np.random.randint(0, 9)
         if action_att is None:
             action_att = np.random.randint(0, 9)
-        # print("action_def", action_def, "action_att", action_att)
+        print("action_def", action_def, "action_att", action_att)
 
         # pybullet environment
         self.roundBegin(action_def, action_att)
