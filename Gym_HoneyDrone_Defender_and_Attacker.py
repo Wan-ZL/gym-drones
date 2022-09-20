@@ -85,8 +85,9 @@ class HyperGameSim(Env):
         self.observation_space['def'] = Box(low=np.array([0., 0.]),
                                      high=np.array([self.defender.system.mission_max_duration, 1.]))
         # [time duration, ratio of attack success, [set of received signal level for all drones]]
-        low_array = np.array([0., 0.]+[self.attacker.undetect_dbm for _ in range(self.system.num_MD+self.system.num_HD)])    # 'undetect_dbm' dBm means the signal is uundetectable
-        high_array = np.array([self.defender.system.mission_max_duration, 1.]+[20. for _ in range(self.system.num_MD+self.system.num_HD)])
+        low_array = np.array([0., 0., 0.]+[self.attacker.undetect_dbm for _ in range(self.system.num_MD+self.system.num_HD)])    # 'undetect_dbm' dBm means the signal is uundetectable
+        # high_array = np.array([self.defender.system.mission_max_duration, 1.]+[20. for _ in range(self.system.num_MD+self.system.num_HD)])
+        high_array = np.array([self.defender.system.mission_max_duration, self.attacker.max_att_budget, self.attacker.max_att_budget] + [20. for _ in range(self.system.num_MD + self.system.num_HD)])
         self.observation_space['att'] = Box(low=low_array, high=high_array)
 
 
@@ -114,10 +115,10 @@ class HyperGameSim(Env):
         state_def = [self.system.mission_duration, self.system.scanCompletePercent()]
         # att
         # attack success ratio
-        if self.attacker.att_counter == 0:
-            att_succ_rate = 0
-        else:
-            att_succ_rate = self.attacker.att_succ_counter / self.attacker.att_counter
+        # if self.attacker.att_counter == 0:
+        #     att_succ_rate = 0
+        # else:
+        #     att_succ_rate = self.attacker.att_succ_counter / self.attacker.att_counter
         # set of attacker's received signal
         att_signal_set = []
         for id in range(self.system.num_MD + self.system.num_HD):
@@ -126,11 +127,12 @@ class HyperGameSim(Env):
             else:
                 att_signal_set.append(self.attacker.undetect_dbm)
 
-        state_att = [self.system.mission_duration, att_succ_rate] + att_signal_set
+        # state_att = [self.system.mission_duration, att_succ_rate] + att_signal_set
+        state_att = [self.system.mission_duration, self.attacker.att_succ_counter, self.attacker.att_counter] + att_signal_set
         # combine
         state = {}
-        state['def'] = state_def
-        state['att'] = state_att
+        state['def'] = np.array(state_def)
+        state['att'] = np.array(state_att)
         return state
 
     def initDroneEnv(self):
@@ -249,7 +251,7 @@ class HyperGameSim(Env):
             action_def = np.random.randint(0, 9)
         if action_att is None:
             action_att = np.random.randint(0, 9)
-        print("action_def", action_def, "action_att", action_att)
+        # print("action_def", action_def, "action_att", action_att)
 
         # pybullet environment
         self.roundBegin(action_def, action_att)
@@ -273,11 +275,12 @@ class HyperGameSim(Env):
             else:
                 att_signal_set.append(self.attacker.undetect_dbm)
 
-        state_att = [self.system.mission_duration, att_succ_rate] + att_signal_set
+        # state_att = [self.system.mission_duration, att_succ_rate] + att_signal_set
+        state_att = [self.system.mission_duration, self.attacker.att_succ_counter, self.attacker.att_counter] + att_signal_set
         # combine
         state = {}
-        state['def'] = state_def
-        state['att'] = state_att
+        state['def'] = np.array(state_def)
+        state['att'] = np.array(state_att)
 
 
         # Defender's Reward
@@ -292,15 +295,24 @@ class HyperGameSim(Env):
 
         # Attacker's Reward
         w_AS = 0.9  # weight for attack success
-        w_AC = 0.1  # weight for attack cost
-        if self.attacker.att_counter:
-            one_round_att_counter = float(self.attacker.att_counter)
-            one_round_att_succ_counter = float(self.attacker.att_succ_counter)
-            reward_att = w_AS * (one_round_att_succ_counter/one_round_att_counter) - w_AC * (one_round_att_counter/self.attacker.max_att_budget)
+        w_AC = 0.05  # weight for attack cost
+        w_SC = 0.05  # weight for number of cell been scanned
+        one_round_att_counter = float(self.attacker.att_counter)
+        one_round_att_succ_counter = float(self.attacker.att_succ_counter)
+        cell_complete_count = self.system.scanCompletePercent()
+        # one_round_att_counter = 0   # This is a Test, TODO: remove it (I think we can remove this as the attack success rate is fixed)
+        # reward_att = w_AS * one_round_att_succ_counter - w_AC * one_round_att_counter - w_SC * cell_complete_count
+        reward_att = one_round_att_counter
 
-        else:
-            # the self.attacker.att_counter=0 lead to whole reward=0
-            reward_att = 0
+
+        # if self.attacker.att_counter:
+        #     one_round_att_counter = float(self.attacker.att_counter)
+        #     one_round_att_succ_counter = float(self.attacker.att_succ_counter)
+        #     reward_att = w_AS * (one_round_att_succ_counter/one_round_att_counter) - w_AC * (one_round_att_counter/self.attacker.max_att_budget)
+        #
+        # else:
+        #     # the self.attacker.att_counter=0 lead to whole reward=0
+        #     reward_att = 0
 
         reward = {}
         reward['def'] = reward_def
@@ -315,7 +327,23 @@ class HyperGameSim(Env):
 
 
         info = {}
-        info["mission condition"] = self.system.mission_condition
+        # info['att_succ_rate'] = att_succ_rate
+        info['att_succ_counter'] = self.attacker.att_succ_counter
+        info['att_counter'] = self.attacker.att_counter
+        info["mission_condition"] = self.system.mission_condition
+        total_energy_consump = 0 # energy consumption of all drones
+        for HD in self.system.HD_set:
+            total_energy_consump += HD.accumulated_consumption
+        for MD in self.system.MD_set:
+            total_energy_consump += MD.accumulated_consumption
+        info["total_energy_consump"] = total_energy_consump
+        info["scan_percent"] = self.system.scanCompletePercent()
+        info["att_reward_0"] = w_AS * one_round_att_succ_counter
+        info["att_reward_1"] = - w_AC * one_round_att_counter
+        info["att_reward_2"] = - w_SC * cell_complete_count
+        info["def_reward_0"] = w_MS * mission_complete_ratio
+        info["def_reward_1"] = w_AC * self.system.aliveDroneCount() / (self.system.num_MD + self.system.num_HD)
+        info["def_reward_2"] = w_MT * self.system.mission_duration / self.system.mission_duration_max
         return state, reward, done, info
 
     def roundBegin(self, action_def, action_att):

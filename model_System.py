@@ -14,7 +14,7 @@ class system_model:
         self.mission_duration_max = 100     # unit: round
         self.mission_max_duration = 200  # T_vision^{max}_m in paper
         self.mission_condition = 0  # -1 means game not end, 0 means mission success, 1 means mission failed by unfinished scan, 2, failed by no time, 3. failed by no MD
-        self.map_cell_number = 10    # number of cell each side
+        self.map_cell_number = 5 #10    # number of cell each side
         self.cell_size = 100  # in meter     (left bottom point of cell represents the coordinate of cell
         self.map_size = self.map_cell_number * self.cell_size   # in meter
         self.map_ori_x = 1  # original point of target area
@@ -23,8 +23,8 @@ class system_model:
         self.scan_cell_map = self.scan_map[::self.cell_size, ::self.cell_size]
         self.min_scan_requirement = 5
         self.recalc_trajectory = False  # True: need recalculate trajectory.
-        self.num_MD = 10  # number of MD (in index, MD first then HD)
-        self.num_HD = 5  # number of HD
+        self.num_MD = 5 # 10  # number of MD (in index, MD first then HD)
+        self.num_HD = 2 # 5  # number of HD
         self.MD_dict = {}  # key is id, value is class detail
         self.HD_dict = {}
         self.MD_crashed_IDs = []  # includes MD crashed or crashed
@@ -222,6 +222,12 @@ class system_model:
         scan_complete_map = scan_cell_map > self.min_scan_requirement
         count_true = np.count_nonzero(scan_complete_map)
         return count_true/scan_cell_map.size
+
+    def scanCompleteCount(self):
+        scan_cell_map = self.scan_map[::self.cell_size,::self.cell_size]  # transfer meter-based scan map to cell-based scan map
+        scan_complete_map = scan_cell_map > self.min_scan_requirement
+        count_true = np.count_nonzero(scan_complete_map)
+        return count_true
 
     def update_scan(self, x_axis, y_axis, amount):
         x_axis = x_axis - self.map_ori_x

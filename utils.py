@@ -2,9 +2,12 @@
 Functions that use multiple times
 """
 
-from torch import nn
+import os
+os.environ["OMP_NUM_THREADS"] = "1" # Error #34: System unable to allocate necessary resources for OMP thread:"
 import torch
 import numpy as np
+
+from torch import nn
 
 
 def v_wrap(np_array, dtype=np.float32):
@@ -27,7 +30,9 @@ def push_and_pull(opt, lnet, gnet, done, s_, bs, ba, br, gamma):
     if done:
         v_s_ = 0.               # terminal
     else:
-        v_s_ = lnet.forward(v_wrap(s_[None, :]))[-1].data.numpy()[0, 0]
+        # v_s_ = lnet.forward(v_wrap(s_[None, :]))[-1].data.numpy()[0, 0]
+        v_s_ = lnet.v_net(v_wrap(s_[None, :])).data.numpy()[0, 0]
+
 
     buffer_v_target = []
     for r in br[::-1]:    # reverse buffer r

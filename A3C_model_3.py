@@ -14,39 +14,101 @@ Date        ：9/1/22
 Description : 
 '''
 
+import os
+os.environ["OMP_NUM_THREADS"] = "1" # Error #34: System unable to allocate necessary resources for OMP thread:"
 import torch
 import torch.nn as nn
 from utils import v_wrap, set_init, push_and_pull, record
 import torch.nn.functional as F
 import torch.multiprocessing as mp
 import gym
+import numpy as np
 
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import LambdaLR
+from Gym_HoneyDrone_Defender_and_Attacker import HyperGameSim
+
 
 class ActorCritic(nn.Module):
-    def __init__(self, s_dim, a_dim, fixed_seed=True):
+    def __init__(self, input_dims, n_actions, epsilon=0.1, epsilon_decay=0.9, pi_net_struc=None, v_net_struct=None, fixed_seed=True):
         super(ActorCritic, self).__init__()
-        self.s_dim = s_dim
-        self.a_dim = a_dim
-        self.pi1 = nn.Linear(s_dim, 128)
-        self.pi2 = nn.Linear(128, a_dim)
-        self.v1 = nn.Linear(s_dim, 128)
-        self.v2 = nn.Linear(128, 1)
+        self.input_dims = input_dims
+        self.n_actions = n_actions
+        self.epsilon = epsilon
+        print("self.epsilon", self.epsilon)
+        self.epsilon_decay = epsilon_decay
+        if pi_net_struc is None:
+            pi_net_struc = [128]     # default 64, 64 hidden layers if not specify
+        else:
+            self.pi_net_struc = pi_net_struc
+        if v_net_struct is None:
+            v_net_struct = [128]     # default 64, 64 hidden layers if not specify
+        else:
+            self.v_net_struct = v_net_struct
 
-        set_init([self.pi1, self.pi2, self.v1, self.v2], fixed_seed)
+        if fixed_seed:
+            print("fix init seed")
+            torch.manual_seed(0)
+        self.pi_net = self.build_Net(input_dims, n_actions, pi_net_struc)
+        self.v_net = self.build_Net(input_dims, 1, v_net_struct)
+
+        self.pi_net.apply(self.init_weight_bias)  # initial weight (normal distribution)
+        self.v_net.apply(self.init_weight_bias)  # initial weight (normal distribution)
+
+        # self.s_dim = input_dims
+        # self.a_dim = n_actions
+        # self.pi1 = nn.Linear(input_dims, 128)
+        # self.pi2 = nn.Linear(128, n_actions)
+        # self.v1 = nn.Linear(input_dims, 128)
+        # self.v2 = nn.Linear(128, 1)
+        # set_init([self.pi1, self.pi2, self.v1, self.v2], fixed_seed)
+
         self.distribution = torch.distributions.Categorical
 
-    def forward(self, x):
-        pi1 = torch.tanh(self.pi1(x))
-        logits = self.pi2(pi1)
-        v1 = torch.tanh(self.v1(x))
-        values = self.v2(v1)
-        return logits, values
+    def epsilon_decay_step(self):
+        new_epsilon = self.epsilon * self.epsilon_decay
+        self.epsilon = new_epsilon
 
-    def choose_action(self, s):
+    def init_weight_bias(self, layer):
+        if type(layer) == nn.Linear:
+            nn.init.xavier_normal_(layer.weight, gain=nn.init.calculate_gain('tanh'))  # use normal distribution
+            # nn.init.kaiming_normal_(layer.weight)
+            # nn.init.normal_(layer.weight, mean=0., std=0.1)
+            # nn.init.normal_(layer.bias, std=1 / layer.in_features)
+            nn.init.constant_(layer.bias, 0.)
+
+    def build_Net(self, obser_space, action_space, net_struc):
+        layers = []
+        in_features = obser_space
+        # for i in range(n_layers):
+        for node_num in net_struc:
+            layers.append(nn.Linear(in_features, node_num))
+            layers.append(nn.Tanh())
+            in_features = node_num
+        layers.append(nn.Linear(in_features, action_space))
+        net = nn.Sequential(*layers)
+        return net
+
+    # def forward(self, x):
+    #     pi1 = torch.tanh(self.pi1(x))
+    #     logits = self.pi2(pi1)
+    #     v1 = torch.tanh(self.v1(x))
+    #     values = self.v2(v1)
+    #     return logits, values
+    # def forward(self, x):
+    #     logits = self.pi_net
+    #     values = self.v_net
+    #     return logits, values
+
+    def choose_action(self, obs):
+        if torch.rand((1,)).item() < self.epsilon:
+            # random action
+            print("Random action. Epsilon is", self.epsilon)
+            return np.int64(torch.randint(0, self.n_actions, (1,)).item())
+
         self.eval()
-        logits, _ = self.forward(s)
+        # logits, _ = self.forward(s)
+        logits = self.pi_net(obs)
         prob = F.softmax(logits, dim=1).data
         m = self.distribution(prob)
         return m.sample().numpy()[0]
@@ -54,7 +116,9 @@ class ActorCritic(nn.Module):
     def loss_func(self, s, a, v_t):
         # print("v_t", v_t)
         self.train()
-        logits, values = self.forward(s)
+        # logits, values = self.forward(s)
+        logits = self.pi_net(s)
+        values = self.v_net(s)
         td = v_t - values
         c_loss = td.pow(2)
 
@@ -62,13 +126,16 @@ class ActorCritic(nn.Module):
         m = self.distribution(probs)
         exp_v = m.log_prob(a) * td.detach().squeeze()
         a_loss = -exp_v
-        total_loss = (c_loss + a_loss).mean()
+        # total_loss = (c_loss + a_loss).mean()
+        c_loss_mean = c_loss.mean()
+        a_loss_mean = a_loss.mean()
+        total_loss = c_loss_mean + a_loss_mean
         # print(c_loss, a_loss, total_loss)
-        return total_loss, c_loss.mean(), a_loss.mean()
+        return total_loss, c_loss_mean, a_loss_mean
 
 
 class Agent(mp.Process):
-    def __init__(self, gnet, opt, shared_dict, gamma, MAX_EP, fixed_seed, trial, name_id: int, player='def'):
+    def __init__(self, gnet, opt, shared_dict, lr_decay, gamma, epsilon, epsilon_decay, MAX_EP, fixed_seed, trial, name_id: int, player='def', is_custom_env=True):
         super(Agent, self).__init__()
         self.name_id = name_id
         self.name = 'w%02i' % name_id
@@ -77,15 +144,27 @@ class Agent(mp.Process):
         self.shared_dict = shared_dict
         self.g_ep = shared_dict['global_ep']
         self.g_r_list = shared_dict['glob_r_list']
-        self.env = gym.make('CartPole-v1')
-        self.N_S = self.env.observation_space.shape[0]
-        self.N_A = self.env.action_space.n
-        self.lnet = ActorCritic(self.N_S, self.N_A, fixed_seed)  # local network
+        self.lr_decay = lr_decay
+        self.is_custom_env = is_custom_env
+        if is_custom_env:
+            self.env = HyperGameSim(fixed_seed=fixed_seed)
+            self.N_S = self.env.observation_space[player].shape[0]
+            self.N_A = self.env.action_space[player].n
+        else:
+            self.env = gym.make('CartPole-v1')
+            self.N_S = self.env.observation_space.shape[0]
+            # self.N_S = self.env.observation_space.n
+            self.N_A = self.env.action_space.n
+        self.lnet = ActorCritic(input_dims=self.N_S, n_actions=self.N_A, epsilon=epsilon, epsilon_decay=epsilon_decay, pi_net_struc=gnet.pi_net_struc,
+                          v_net_struct=gnet.v_net_struct, fixed_seed=fixed_seed)  # local network
         self.gamma = gamma
         self.MAX_EP = MAX_EP
         self.trial = trial
         self.player = player
+        self.scheduler = LambdaLR(self.opt, lr_lambda=self.lambda_function)
 
+    def lambda_function(self, epoch):  # epoch increase one when scheduler.step() is called
+        return self.lr_decay ** epoch
 
     def run(self):
         # ======== Create Writer for TensorBoard ========
@@ -97,7 +176,7 @@ class Agent(mp.Process):
                 trial_num_str = "None"
 
             if self.shared_dict["on_server"]:
-                path = "/home/zelin/Drone/code_files/data/"
+                path = "/home/zelin/Drone/data/"
             else:
                 path = ""
             writer = SummaryWriter(log_dir=path + "runs_" + self.player + "/each_run_" + self.shared_dict["start_time"] + "-" +
@@ -108,52 +187,117 @@ class Agent(mp.Process):
         else:
             writer = None
 
-
-        total_step = 1
+        ep_counter = 0
         while self.g_ep.value < self.MAX_EP:
-            s = self.env.reset()
+            temp_ep = self.g_ep.value
+            if self.is_custom_env:
+                obs_out = self.env.reset()
+                if self.player == "att":
+                    obs = obs_out['att']
+                elif self.player == "def":
+                    obs = obs_out['def']
+                else:
+                    raise Exception("invalide 'player_name'")
+            else:
+                obs = self.env.reset()
+
             buffer_s, buffer_a, buffer_r = [], [], []
             total_loss_set = []
             c_loss_set = []
             a_loss_set = []
+            att_succ_rate_set = []
+            att_reward_0 = 0
+            att_reward_1 = 0
+            att_reward_2 = 0
+            def_reward_0 = 0
+            def_reward_1 = 0
+            def_reward_2 = 0
             score = 0
             oppo_score = 0
+            total_step = 1
             done = False
             while not done:
-                # if self.name == 'w00':
-                    # self.env.render()
-                a = self.lnet.choose_action(v_wrap(s[None, :]))
-                s_, r, done, _ = self.env.step(a)
-                if done: r = -1
-                score += r
-                oppo_score += 0     # TODO: change this when use Drone's Env
-                buffer_a.append(a)
-                buffer_s.append(s)
-                buffer_r.append(r)
+                # if self.name_id == 0:
+                #     self.env.render()
+                action = self.lnet.choose_action(v_wrap(obs[None, :]))
+                if self.is_custom_env:
+                    action_def = None
+                    action_att = None
+                    if self.player == "att":
+                        action_att = action
+                    elif self.player == "def":
+                        action_def = action
+                    else:
+                        print("Error: player is not specified, using action for defender")
+                        action_def = action
+                    the_obs_, the_reward, done, info = self.env.step(action_def=action_def, action_att=action_att)
+                    if self.player == "att":
+                        reward = the_reward['att']
+                        oppo_reward = the_reward['def']
+                        obs_ = the_obs_['att']
+                    elif self.player == "def":
+                        reward = the_reward['def']
+                        oppo_reward = the_reward['att']
+                        obs_ = the_obs_['def']
+                    else:
+                        raise Exception("invalide 'player_name'")
+                    # add data from each step (for custom env only)
+                    # att_succ_rate_set.append(info['att_succ_rate'])
+                    if info['att_counter']:
+                        att_succ_rate_set.append(info['att_succ_counter']/info['att_counter'])
+                    att_reward_0 += info["att_reward_0"]
+                    att_reward_1 += info["att_reward_1"]
+                    att_reward_2 += info["att_reward_2"]
+                    def_reward_0 += info["def_reward_0"]
+                    def_reward_1 += info["def_reward_1"]
+                    def_reward_2 += info["def_reward_2"]
+                else:
+                    obs_, reward, done, _ = self.env.step(action)
+                    oppo_reward = 0
+
+                if done: reward = -1
+                # add data from each step
+                score += reward
+                oppo_score += oppo_reward
+                buffer_a.append(action)
+                buffer_s.append(obs)
+                buffer_r.append(reward)
 
                 if total_step % 5 == 0 or done:  # update global and assign to local net
                     # sync
-                    total_loss, c_loss, a_loss = push_and_pull(self.opt, self.lnet, self.gnet, done, s_, buffer_s,
+                    total_loss, c_loss, a_loss = push_and_pull(self.opt, self.lnet, self.gnet, done, obs_, buffer_s,
                                                                buffer_a, buffer_r, self.gamma)
                     total_loss_set.append(total_loss.item())
                     c_loss_set.append(c_loss.item())
                     a_loss_set.append(a_loss.item())
                     buffer_s, buffer_a, buffer_r = [], [], []
 
-                s = s_
+                obs = obs_
                 total_step += 1
 
             # save data to shared dictionary for tensorboard
             with self.g_ep.get_lock():
-                self.shared_dict['eps_writer'].put(self.g_ep.value)
                 self.g_ep.value += 1
-            self.g_r_list.append(score)
-            self.shared_dict["score_writer"].put(score)
-            self.shared_dict["oppo_score_writer"].put(oppo_score)
-            self.shared_dict["lr_writer"].put(self.opt.param_groups[0]['lr'])
-            self.shared_dict['t_loss_writer'].put(sum(total_loss_set)/len(total_loss_set))
-            self.shared_dict['c_loss_writer'].put(sum(c_loss_set) / len(c_loss_set))
-            self.shared_dict['a_loss_writer'].put(sum(a_loss_set) / len(a_loss_set))
+                self.shared_dict['eps_writer'].put(temp_ep)
+                self.g_r_list.append(score)
+                self.shared_dict["score_writer"].put(score)
+                self.shared_dict["oppo_score_writer"].put(oppo_score)
+                self.shared_dict["lr_writer"].put(self.opt.param_groups[0]['lr'])
+                self.shared_dict["epsilon_writer"].put(self.lnet.epsilon)
+                self.shared_dict['t_loss_writer'].put(sum(total_loss_set)/len(total_loss_set))
+                self.shared_dict['c_loss_writer'].put(sum(c_loss_set) / len(c_loss_set))
+                self.shared_dict['a_loss_writer'].put(sum(a_loss_set) / len(a_loss_set))
+                if self.is_custom_env:
+                    self.shared_dict['att_succ_rate_writer'].put(sum(att_succ_rate_set) / len(att_succ_rate_set) if len(att_succ_rate_set) else 0)
+                    self.shared_dict['mission_condition_writer'].put(info["mission_condition"])
+                    self.shared_dict['total_energy_consump_writer'].put(info["total_energy_consump"])
+                    self.shared_dict['scan_percent_writer'].put(info["scan_percent"])
+                    self.shared_dict['att_reward_0_writer'].put(att_reward_0)
+                    self.shared_dict['att_reward_1_writer'].put(att_reward_1)
+                    self.shared_dict['att_reward_2_writer'].put(att_reward_2)
+                    self.shared_dict['def_reward_0_writer'].put(def_reward_0)
+                    self.shared_dict['def_reward_1_writer'].put(def_reward_1)
+                    self.shared_dict['def_reward_2_writer'].put(def_reward_2)
 
 
             # ==== tensorboard writer ====
@@ -163,54 +307,55 @@ class Agent(mp.Process):
                 while not self.shared_dict['eps_writer'].empty():
                     # use episode as index of tensorboard
                     current_eps = self.shared_dict['eps_writer'].get()
+                    current_eps = ep_counter
                     # write score
                     writer.add_scalar("Score", self.shared_dict["score_writer"].get(), current_eps)
                     writer.add_scalar("Opponent's Score", self.shared_dict["oppo_score_writer"].get(), current_eps)
                     # write lr
                     writer.add_scalar("Learning rate", self.shared_dict["lr_writer"].get(), current_eps)
                     # write epsilon
-                    # writer.add_scalar("Epsilon (random action probability)", self.shared_dict["epsilon"][id],
-                    #                   current_eps)
-                    # # write mission time (step)
-                    # writer.add_scalar("Mission Time (step)", t_step, self.shared_dict["eps"][id])
+                    writer.add_scalar("Epsilon (random action probability)", self.shared_dict["epsilon_writer"].get(),
+                                      current_eps)
+                    # write mission time (step)
+                    writer.add_scalar("Mission Time (step)", total_step, current_eps)
                     # write loss
                     writer.add_scalar("Model's Total Loss", self.shared_dict['t_loss_writer'].get(), current_eps)
                     writer.add_scalar("Model's Critic Loss", self.shared_dict['c_loss_writer'].get(), current_eps)
                     writer.add_scalar("Model's Actor Loss", self.shared_dict['a_loss_writer'].get(), current_eps)
-                    # mission completion rate
-                    # writer.add_scalar("Mission Success Rate (completion rate)", self.env.system.scanCompletePercent(), self.shared_dict["eps"][id])   # TODO: comment out for test
+                    # write mission completion rate
+                    if self.is_custom_env:
+                        # write attack success rate
+                        writer.add_scalar("Attack Success Rate", self.shared_dict['att_succ_rate_writer'].get(),
+                                          current_eps)
+                        # write mission success rate
+                        writer.add_scalar("Mission Success Rate (completion rate)", self.shared_dict['scan_percent_writer'].get(), current_eps)
+                        # # write missin result
+                        # writer.add_scalar("Mission condition (1 success, 0 failure)", self.shared_dict['mission_condition_writer'].get(), current_eps)
+                        # write energy cunsumption for all drone (added them together)
+                        writer.add_scalar("Energy Consumption", self.shared_dict['total_energy_consump_writer'].get(), current_eps)
+                        # write each component of attacker's reward
+                        writer.add_scalar("Attacker's Reward (component 0)",
+                                          self.shared_dict['att_reward_0_writer'].get(), current_eps)
+                        writer.add_scalar("Attacker's Reward (component 1)",
+                                          self.shared_dict['att_reward_1_writer'].get(), current_eps)
+                        writer.add_scalar("Attacker's Reward (component 2)",
+                                          self.shared_dict['att_reward_2_writer'].get(), current_eps)
+                        writer.add_scalar("Defender's Reward (component 0)",
+                                          self.shared_dict['def_reward_0_writer'].get(), current_eps)
+                        writer.add_scalar("Defender's Reward (component 1)",
+                                          self.shared_dict['def_reward_1_writer'].get(), current_eps)
+                        writer.add_scalar("Defender's Reward (component 2)",
+                                          self.shared_dict['def_reward_2_writer'].get(), current_eps)
 
 
+                    ep_counter += 1
 
-
-                # for id in range(self.shared_dict["index"], len(self.shared_dict["eps"])):
-                #     # write score
-                #     writer.add_scalar("Average Score", self.shared_dict["score"][id], self.shared_dict["eps"][id])
-                #     writer.add_scalar("Opponent's Average Score", self.shared_dict["oppo_score"][id],
-                #                       self.shared_dict["eps"][id])
-                #     # write lr
-                #     writer.add_scalar("Learning rate", self.shared_dict["lr"][id], self.shared_dict["eps"][id])
-                    # # write epsilon
-                    # writer.add_scalar("Epsilon (random action probability)", self.shared_dict["epsilon"][id],
-                    #                   self.shared_dict["eps"][id])
-                    # # write mission time (step)
-                    # writer.add_scalar("Mission Time (step)", t_step, self.shared_dict["eps"][id])
-                    # # write loss
-                    # writer.add_scalar("Model's Total Loss", sum(total_loss_set) / len(total_loss_set),
-                    #                   self.shared_dict["eps"][id])
-                    # writer.add_scalar("Model's Critic Loss", sum(critic_loss_set) / len(critic_loss_set),
-                    #                   self.shared_dict["eps"][id])
-                    # writer.add_scalar("Model's Actor Loss", sum(actor_loss_set) / len(actor_loss_set),
-                    #                   self.shared_dict["eps"][id])
-                    # mission completion rate
-                    # writer.add_scalar("Mission Success Rate (completion rate)", self.env.system.scanCompletePercent(), self.shared_dict["eps"][id])   # TODO: comment out for test
-                # update index
-                # self.shared_dict["index"] = len(self.shared_dict["eps"])
-
-            # if self.name_id == 0:
-            #     self.scheduler.step()  # update learning rate each episode
+            self.scheduler.step()  # update learning rate each episode (each agent will update lr independently)
+            self.lnet.epsilon_decay_step()  # update epsilon each episode
             print(self.name, 'episode ', self.g_ep.value, 'reward %.1f' % score)
         # self.res_queue.put(None)
+
+        if self.is_custom_env: self.env.close_env()
 
         if writer is not None:
             writer.flush()

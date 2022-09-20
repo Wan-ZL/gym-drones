@@ -23,7 +23,7 @@ class attacker_model(player_model):
         # condition edit in 'def observe()'. It convert signal strength to strategy index
         self.target_set = []
         self.epsilon = 0.5                      # variable used in determine target range
-        self.attack_success_prob = 0.3          # attack success rate of each attack on each drone  # TODO: use CVSS to see the exploitability
+        self.attack_success_prob = 0.4          # attack success rate of each attack on each drone  # TODO: use CVSS to see the exploitability
         self.att_counter = 0    # number of attack launched in a round
         self.att_succ_counter = 0  # count the number of drone compromised in a round
         self.max_att_budget = 5     # the maximum number of attack can launch in a round

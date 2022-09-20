@@ -179,7 +179,6 @@ class ActorCritic(nn.Module):
         # v = self.v_net(states)
         v_next = self.v_net(observation_new)    # v for the state_{t_max+1}
 
-        # TODO: discuss, should I use v_net(states[-1] or v_net(observation_new) ?
         R = v_next * (1 - int(done))
 
         batch_return = []

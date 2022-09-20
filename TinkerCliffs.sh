@@ -22,7 +22,7 @@ source activate dronePytorch
 
 python --version
 
-python A3C_train_agent_optuna.py
+python A3C_train_agent_optuna_3.py
 
 
 echo "Scrpt End"
