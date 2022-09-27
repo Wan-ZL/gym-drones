@@ -11,8 +11,8 @@ class system_model:
         self.mission_success = False
         self.mission_max_status = self.mission_Not_end
         self.mission_duration = 0  # T_M in paper. unit: round
-        self.mission_duration_max = 100     # unit: round
-        self.mission_max_duration = 200  # T_vision^{max}_m in paper
+        self.mission_duration_max = 50     # unit: round
+        # self.mission_max_duration = 200  # T_vision^{max}_m in paper
         self.mission_condition = 0  # -1 means game not end, 0 means mission success, 1 means mission failed by unfinished scan, 2, failed by no time, 3. failed by no MD
         self.map_cell_number = 5 #10    # number of cell each side
         self.cell_size = 100  # in meter     (left bottom point of cell represents the coordinate of cell
@@ -156,6 +156,15 @@ class system_model:
                 if self.print: print(f"detected HD {HD.ID} charging complete, recalculate trajectory")
                 self.recalc_trajectory = True
 
+    def HD_one_round_consume(self):
+        total_consum = 0
+        for HD in self.HD_set:
+            if not HD.in_GCS:
+                if not HD.crashed:
+                    total_consum += HD.consume_rate
+        return total_consum
+
+
     def assign_HD(self):
         for index in range(self.num_HD):
             self.HD_dict[index] = Honey_Drone(index, self.update_freq)
@@ -185,7 +194,7 @@ class system_model:
             # mission end if: all cells are scanned
             self.mission_Not_end -= 1
             self.mission_success = True
-        elif self.mission_duration > self.mission_max_duration:
+        elif self.mission_duration > self.mission_duration_max:
             # mission end if: mission time limit meet
             self.mission_Not_end -= 2
             print("\n Mission Fail :( \n")

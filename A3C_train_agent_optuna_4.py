@@ -1,10 +1,9 @@
 '''
 Project     ：gym-drones 
-File        ：A3C_train_agent_optuna_3.py
+File        ：A3C_train_agent_optuna_4.py.py
 Author      ：Zelin Wan
-Date        ：9/3/22
-Description : Use optuna to find the hyperparameter. Change variable 'is_defender' to defender-vs-random or
-            attacker-vs-random.
+Date        ：9/20/22
+Description : Train attacker DRL and defender DRL at the same time.
 '''
 
 
@@ -17,7 +16,7 @@ import random
 import time
 
 from shared_adam import SharedAdam
-from A3C_model_3 import *
+from A3C_model_4 import *
 from sys import platform
 from multiprocessing import Manager
 from utils import get_last_ten_ave
@@ -44,7 +43,7 @@ def objective(trial, fixed_seed=True, on_server=True, is_defender=True, is_custo
     # gamma: used to discount future reward, lr: learning rate, LR_decay: learning rate decay,
     # epsilon: probability of doing random action, epsilon_decay: epsilon decay,
     # pi_net_struc: structure of policy network, v_net_struct: structure of value network.
-    config = dict(glob_episode_thred=5000, min_episode=1000, gamma=0.99, lr=0.01, LR_decay=0.99, epsilon=0.1,
+    config = dict(glob_episode_thred=5000, min_episode=1000, gamma=0.99, lr=0.01, LR_decay=0.99, epsilon=0.5,
                   epsilon_decay=0.99, pi_net_struc=[64, 128, 128, 64], v_net_struct=[64, 128, 128, 64])
 
     # Suggest values of the hyperparameters using a trial object.
@@ -67,26 +66,40 @@ def objective(trial, fixed_seed=True, on_server=True, is_defender=True, is_custo
 
     if is_custom_env:
         env = HyperGameSim(fixed_seed=fixed_seed)
-        input_dims = env.observation_space[player_name].shape[0]
-        n_actions = env.action_space[player_name].n
+        input_dims_def = env.observation_space['def'].shape[0]
+        n_actions_def = env.action_space['def'].n
+        input_dims_att = env.observation_space['att'].shape[0]
+        n_actions_att = env.action_space['att'].n
         env.close_env()
     else:
         env = gym.make('CartPole-v1')
-        input_dims = env.observation_space.shape[0]
+        input_dims_def = env.observation_space.shape[0]
         # input_dims = env.observation_space.n
-        n_actions = env.action_space.n
+        n_actions_def = env.action_space.n
 
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Share Using", device)
 
     print("config epsilon", config["epsilon"])
-    glob_AC = ActorCritic(input_dims=input_dims, n_actions=n_actions, epsilon=config["epsilon"],
+    glob_AC_def = ActorCritic(input_dims=input_dims_def, n_actions=n_actions_def, epsilon=config["epsilon"],
                           epsilon_decay=config["epsilon_decay"], pi_net_struc=config["pi_net_struc"],
                           v_net_struct=config["v_net_struct"], fixed_seed=fixed_seed).to(device)  # Global Actor Critic
-    print("global_actor_critic", glob_AC)
-    glob_AC.share_memory()  # share the global parameters in multiprocessing
-    optim = SharedAdam(glob_AC.parameters(), lr=config["lr"])  # global optimizer
+    print("Defender's global_actor_critic", glob_AC_def)
+    glob_AC_def.share_memory()  # share the global parameters in multiprocessing
+    optim_def = SharedAdam(glob_AC_def.parameters(), lr=config["lr"])  # global optimizer
+
+    if is_custom_env:
+        glob_AC_att = ActorCritic(input_dims=input_dims_att, n_actions=n_actions_att, epsilon=config["epsilon"],
+                                  epsilon_decay=config["epsilon_decay"], pi_net_struc=config["pi_net_struc"],
+                                  v_net_struct=config["v_net_struct"], fixed_seed=fixed_seed).to(
+            device)  # Global Actor Critic
+        print("Attacker's global_actor_critic", glob_AC_att)
+        glob_AC_att.share_memory()  # share the global parameters in multiprocessing
+        optim_att = SharedAdam(glob_AC_att.parameters(), lr=config["lr"])  # global optimizer
+    else:
+        glob_AC_att = None
+        optim_att = None
 
     # shared_dict is shared by all parallel processes
     shared_dict = {}
@@ -94,13 +107,16 @@ def objective(trial, fixed_seed=True, on_server=True, is_defender=True, is_custo
     shared_dict['glob_r_list'] = Manager().list()
     shared_dict["start_time"] = str(start_time)
     shared_dict['eps_writer'] = mp.Queue()      # '_writer' means it will be used for tensorboard writer
-    shared_dict['score_writer'] = mp.Queue()
-    shared_dict['oppo_score_writer'] = mp.Queue()
+    shared_dict['score_def_writer'] = mp.Queue()
+    shared_dict['score_att_writer'] = mp.Queue()
     shared_dict['lr_writer'] = mp.Queue()
     shared_dict["epsilon_writer"] = mp.Queue()
-    shared_dict['t_loss_writer'] = mp.Queue()   # total loss of actor critic
-    shared_dict['c_loss_writer'] = mp.Queue()   # loss of critic
-    shared_dict['a_loss_writer'] = mp.Queue()   # loss of actor
+    shared_dict['t_loss_def_writer'] = mp.Queue()   # total loss of actor critic for defender
+    shared_dict['c_loss_def_writer'] = mp.Queue()   # loss of critic for defender
+    shared_dict['a_loss_def_writer'] = mp.Queue()   # loss of actor for defender
+    shared_dict['t_loss_att_writer'] = mp.Queue()  # total loss of actor critic for attacker
+    shared_dict['c_loss_att_writer'] = mp.Queue()  # loss of critic for attacker
+    shared_dict['a_loss_att_writer'] = mp.Queue()  # loss of actor for attacker
     shared_dict['att_succ_rate_writer'] = mp.Queue()    # attack success rate
     shared_dict['mission_condition_writer'] = mp.Queue()   # 0 means mission fail, 1 means mission success
     shared_dict['total_energy_consump_writer'] = mp.Queue()    # energy consumption of drones
@@ -121,10 +137,14 @@ def objective(trial, fixed_seed=True, on_server=True, is_defender=True, is_custo
         num_worker = 120  # mp.cpu_count()     # update this for matching server's resources
     else:
         num_worker = 9
-    workers = [Agent(glob_AC, optim, shared_dict=shared_dict, lr_decay=config["LR_decay"], gamma=config["gamma"],
-                     epsilon=config["epsilon"], epsilon_decay=config["epsilon_decay"],
-                     MAX_EP=config["glob_episode_thred"], fixed_seed=fixed_seed, trial=trial,
-                     name_id=i, player=player_name, is_custom_env=is_custom_env) for i in range(num_worker)]
+    # workers = [Agent(glob_AC_def, optim_def, shared_dict=shared_dict, lr_decay=config["LR_decay"], gamma=config["gamma"],
+    #                  epsilon=config["epsilon"], epsilon_decay=config["epsilon_decay"],
+    #                  MAX_EP=config["glob_episode_thred"], fixed_seed=fixed_seed, trial=trial,
+    #                  name_id=i, player=player_name, is_custom_env=is_custom_env) for i in range(num_worker)]
+    workers = [MultiAgent(glob_AC_def, glob_AC_att, optim_def, optim_att, shared_dict=shared_dict, lr_decay=config["LR_decay"],
+                          gamma=config["gamma"], epsilon=config["epsilon"], epsilon_decay=config["epsilon_decay"],
+                          MAX_EP=config["glob_episode_thred"], fixed_seed=fixed_seed, trial=trial, name_id=i,
+                          player=player_name, is_custom_env=is_custom_env) for i in range(num_worker)]
 
     [w.start() for w in workers]
     [w.join() for w in workers]
@@ -139,12 +159,21 @@ def objective(trial, fixed_seed=True, on_server=True, is_defender=True, is_custo
     # ========= Save global model =========
     # run 'tensorboard --logdir=runs' in terminal to start TensorBoard.
     if on_server:
-        path = "/home/zelin/Drone/data/" + player_name
+        path = "/home/zelin/Drone/data/DefAtt/def"
     else:
-        path = "/Users/wanzelin/办公/gym-drones/data/" + player_name
+        path = "/Users/wanzelin/办公/gym-drones/data/DefAtt/def"
     os.makedirs(path + "/model", exist_ok=True)
-    torch.save(glob_AC.state_dict(),
-               path + "/model/trained_A3C_" + str(start_time) + "_" + player_name + "_Trial_" + trial_num_str)
+    torch.save(glob_AC_def.state_dict(),
+               path + "/model/trained_A3C_" + str(start_time) + "_def_Trial_" + trial_num_str)
+
+    if is_custom_env:
+        if on_server:
+            path = "/home/zelin/Drone/data/DefAtt/att"
+        else:
+            path = "/Users/wanzelin/办公/gym-drones/data/DefAtt/att"
+        os.makedirs(path + "/model", exist_ok=True)
+        torch.save(glob_AC_att.state_dict(),
+                   path + "/model/trained_A3C_" + str(start_time) + "_att_Trial_" + trial_num_str)
 
 
     # ========= Write Hparameter to Tensorboard =========
@@ -165,8 +194,7 @@ def objective(trial, fixed_seed=True, on_server=True, is_defender=True, is_custo
         path = "/home/zelin/Drone/data/"
     else:
         path = ""
-    writer_hparam = SummaryWriter(log_dir=path + "runs_" + player_name + "/each_run_" + str(start_time) + "-" + player_name +
-                                  "-Trial_" + trial_num_str + "-hparm")
+    writer_hparam = SummaryWriter(log_dir=path + "runs_DefAtt/each_run_" + str(start_time) + "-DefAtt-Trial_" + trial_num_str + "-hparm")
 
     writer_hparam.add_hparams(temp_config, {'return_reward': last_10_per_reward_mean})  # add for Hyperparameter Tuning
     writer_hparam.flush()
@@ -207,13 +235,13 @@ if __name__ == '__main__':
     else:
         print("training mode")
         if on_server:
-            db_path = "/home/zelin/Drone/data/"+player_name+"/"
+            db_path = "/home/zelin/Drone/data/DefAtt/"
             os.makedirs(db_path, exist_ok=True)
             study = optuna.create_study(direction='maximize', study_name="A3C-hyperparameter-study",
                                         storage="sqlite://///"+db_path+"HyperPara_database.db",
                                         load_if_exists=True)
         else:
-            db_path = "/Users/wanzelin/办公/gym-drones/data/"+player_name+"/"
+            db_path = "/Users/wanzelin/办公/gym-drones/data/DefAtt/"
             os.makedirs(db_path, exist_ok=True)
             study = optuna.create_study(direction='maximize', study_name="A3C-hyperparameter-study",
                                         storage="sqlite:////"+db_path+"HyperPara_database.db",

@@ -83,11 +83,11 @@ class HyperGameSim(Env):
         self.observation_space = dict()
         # [time duration, ratio of mission complete]
         self.observation_space['def'] = Box(low=np.array([0., 0.]),
-                                     high=np.array([self.defender.system.mission_max_duration, 1.]))
+                                     high=np.array([self.defender.system.mission_duration_max, 1.]))
         # [time duration, ratio of attack success, [set of received signal level for all drones]]
         low_array = np.array([0., 0., 0.]+[self.attacker.undetect_dbm for _ in range(self.system.num_MD+self.system.num_HD)])    # 'undetect_dbm' dBm means the signal is uundetectable
-        # high_array = np.array([self.defender.system.mission_max_duration, 1.]+[20. for _ in range(self.system.num_MD+self.system.num_HD)])
-        high_array = np.array([self.defender.system.mission_max_duration, self.attacker.max_att_budget, self.attacker.max_att_budget] + [20. for _ in range(self.system.num_MD + self.system.num_HD)])
+        # high_array = np.array([self.defender.system.mission_duration_max, 1.]+[20. for _ in range(self.system.num_MD+self.system.num_HD)])
+        high_array = np.array([self.defender.system.mission_duration_max, self.attacker.max_att_budget, self.attacker.max_att_budget] + [20. for _ in range(self.system.num_MD + self.system.num_HD)])
         self.observation_space['att'] = Box(low=low_array, high=high_array)
 
 
@@ -248,9 +248,11 @@ class HyperGameSim(Env):
         '''
 
         if action_def is None:
-            action_def = np.random.randint(0, 9)
+            # action_def = np.random.randint(0, 9)    # TODO: this is a test
+            action_def = 5
         if action_att is None:
-            action_att = np.random.randint(0, 9)
+            # action_att = np.random.randint(0, 9)    # TODO: this is a test
+            action_att = 5
         # print("action_def", action_def, "action_att", action_att)
 
         # pybullet environment
@@ -287,11 +289,16 @@ class HyperGameSim(Env):
         w_MS = 1.0/3.0
         w_AC = 1.0/3.0
         w_MT = 1.0/3.0
-        if mission_complete_ratio:
-            reward_def = w_MS * mission_complete_ratio + w_AC * self.system.aliveDroneCount() / (
-                        self.system.num_MD + self.system.num_HD) + w_MT * self.system.mission_duration / self.system.mission_duration_max
-        else:
-            reward_def = 0
+        # if mission_complete_ratio:
+        #     reward_def = w_MS * mission_complete_ratio + w_AC * self.system.aliveDroneCount() / (
+        #                 self.system.num_MD + self.system.num_HD) + w_MT * self.system.mission_duration / self.system.mission_duration_max
+        # else:
+        #     reward_def = 0
+        energy_HD = self.system.HD_one_round_consume()
+        mission_effect = w_MS * mission_complete_ratio + w_AC * self.system.aliveDroneCount() / (
+                self.system.num_MD + self.system.num_HD) + w_MT * (1 - self.system.mission_duration / self.system.mission_duration_max) - energy_HD
+        reward_def = math.exp(-1/mission_effect)
+
 
         # Attacker's Reward
         w_AS = 0.9  # weight for attack success
@@ -302,7 +309,11 @@ class HyperGameSim(Env):
         cell_complete_count = self.system.scanCompletePercent()
         # one_round_att_counter = 0   # This is a Test, TODO: remove it (I think we can remove this as the attack success rate is fixed)
         # reward_att = w_AS * one_round_att_succ_counter - w_AC * one_round_att_counter - w_SC * cell_complete_count
-        reward_att = one_round_att_counter
+        # reward_att = one_round_att_counter
+        mission_effect_att = w_MS * mission_complete_ratio + w_AC * self.system.aliveDroneCount() / (
+                self.system.num_MD + self.system.num_HD) + w_MT * (
+                                     1 - self.system.mission_duration / self.system.mission_duration_max)
+        reward_att = 1 - math.exp(-1/mission_effect_att)
 
 
         # if self.attacker.att_counter:
