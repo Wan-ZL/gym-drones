@@ -9,6 +9,9 @@ Description : Use optuna to find the hyperparameter. Change variable 'is_defende
 
 
 import os
+
+import torch
+
 os.environ["OMP_NUM_THREADS"] = "1"
 import torch.multiprocessing as mp
 import numpy as np
@@ -26,7 +29,7 @@ from Gym_HoneyDrone_Defender_and_Attacker import HyperGameSim
 
 
 
-def objective(trial, fixed_seed=True, on_server=True, is_defender=True, is_custom_env=True):
+def objective(trial, fixed_seed=True, on_server=True, exist_model=False, is_defender=True, is_custom_env=True):
     start_time = time.time()
     if is_defender:
         player_name = 'def'
@@ -44,8 +47,12 @@ def objective(trial, fixed_seed=True, on_server=True, is_defender=True, is_custo
     # gamma: used to discount future reward, lr: learning rate, LR_decay: learning rate decay,
     # epsilon: probability of doing random action, epsilon_decay: epsilon decay,
     # pi_net_struc: structure of policy network, v_net_struct: structure of value network.
-    config = dict(glob_episode_thred=5000, min_episode=1000, gamma=0.99, lr=0.01, LR_decay=0.99, epsilon=0.1,
-                  epsilon_decay=0.99, pi_net_struc=[64, 128, 128, 64], v_net_struct=[64, 128, 128, 64])
+    if is_defender: # default configuration for defender
+        config = dict(glob_episode_thred=5000, min_episode=1000, gamma=0.95695, lr=0.0046045, LR_decay=0.97727, epsilon=0.04388,
+                      epsilon_decay=0.90058, pi_net_struc=[64, 128, 128, 64], v_net_struct=[64, 128, 128, 64])
+    else:           # default configuration for attacker
+        config = dict(glob_episode_thred=5000, min_episode=1000, gamma=0.91545, lr=0.0046110, LR_decay=0.97639, epsilon=0.054587,
+                      epsilon_decay=0.91960, pi_net_struc=[64, 128, 128, 64], v_net_struct=[64, 128, 128, 64])
 
     # Suggest values of the hyperparameters using a trial object.
     if trial is not None:
@@ -84,6 +91,14 @@ def objective(trial, fixed_seed=True, on_server=True, is_defender=True, is_custo
     glob_AC = ActorCritic(input_dims=input_dims, n_actions=n_actions, epsilon=config["epsilon"],
                           epsilon_decay=config["epsilon_decay"], pi_net_struc=config["pi_net_struc"],
                           v_net_struct=config["v_net_struct"], fixed_seed=fixed_seed).to(device)  # Global Actor Critic
+    # load pre-trained model's parameters
+    # if exist_model:
+    #     path = "trained_model/" + player_name + "/trained_A3C"
+    #     glob_AC.load_state_dict(torch.load(path))
+    #     glob_AC.eval()
+    # else:
+    #     glob_AC.train()
+
     print("global_actor_critic", glob_AC)
     glob_AC.share_memory()  # share the global parameters in multiprocessing
     optim = SharedAdam(glob_AC.parameters(), lr=config["lr"])  # global optimizer
@@ -94,8 +109,10 @@ def objective(trial, fixed_seed=True, on_server=True, is_defender=True, is_custo
     shared_dict['glob_r_list'] = Manager().list()
     shared_dict["start_time"] = str(start_time)
     shared_dict['eps_writer'] = mp.Queue()      # '_writer' means it will be used for tensorboard writer
-    shared_dict['score_writer'] = mp.Queue()
-    shared_dict['oppo_score_writer'] = mp.Queue()
+    shared_dict['score_def_writer'] = mp.Queue()
+    shared_dict['score_att_writer'] = mp.Queue()
+    shared_dict['score_def_avg_writer'] = mp.Queue()
+    shared_dict['score_att_avg_writer'] = mp.Queue()
     shared_dict['lr_writer'] = mp.Queue()
     shared_dict["epsilon_writer"] = mp.Queue()
     shared_dict['t_loss_writer'] = mp.Queue()   # total loss of actor critic
@@ -120,11 +137,11 @@ def objective(trial, fixed_seed=True, on_server=True, is_defender=True, is_custo
     if on_server:
         num_worker = 120  # mp.cpu_count()     # update this for matching server's resources
     else:
-        num_worker = 9
+        num_worker = 1
     workers = [Agent(glob_AC, optim, shared_dict=shared_dict, lr_decay=config["LR_decay"], gamma=config["gamma"],
                      epsilon=config["epsilon"], epsilon_decay=config["epsilon_decay"],
                      MAX_EP=config["glob_episode_thred"], fixed_seed=fixed_seed, trial=trial,
-                     name_id=i, player=player_name, is_custom_env=is_custom_env) for i in range(num_worker)]
+                     name_id=i, player=player_name, exist_model=exist_model, is_custom_env=is_custom_env) for i in range(num_worker)]
 
     [w.start() for w in workers]
     [w.join() for w in workers]
@@ -176,7 +193,8 @@ def objective(trial, fixed_seed=True, on_server=True, is_defender=True, is_custo
 
 
 if __name__ == '__main__':
-    test_mode = False       # True means use preset hyperparameter, and optuna will not be used.
+    test_mode = False        # True means use preset hyperparameter, and optuna will not be used.
+    exist_model = False      # True means use the existing pre-trained model.
     is_defender = True      # True means train a defender RL, False means train an attacker RL
     fixed_seed = True       # True means the seeds for pytorch, numpy, and python will be fixed.
     is_custom_env = True    # True means use the customized drone environment, False means use gym 'CartPole-v1'.
@@ -203,7 +221,7 @@ if __name__ == '__main__':
     # /home/zelin/Drone/data
     if test_mode:
         print("testing mode")
-        objective(None, fixed_seed=fixed_seed, on_server=on_server, is_defender=is_defender, is_custom_env=is_custom_env)
+        objective(None, fixed_seed=fixed_seed, on_server=on_server, exist_model=exist_model, is_defender=is_defender, is_custom_env=is_custom_env)
     else:
         print("training mode")
         if on_server:
@@ -218,6 +236,6 @@ if __name__ == '__main__':
             study = optuna.create_study(direction='maximize', study_name="A3C-hyperparameter-study",
                                         storage="sqlite:////"+db_path+"HyperPara_database.db",
                                         load_if_exists=True)
-        study.optimize(lambda trial: objective(trial, fixed_seed, on_server, is_defender, is_custom_env), n_trials=100)
+        study.optimize(lambda trial: objective(trial, fixed_seed, on_server, exist_model, is_defender, is_custom_env), n_trials=100)
 
 

@@ -1,6 +1,7 @@
 import numpy as np
 from model_MD import Mission_Drone
 from model_HD import Honey_Drone
+from model_RLD import RLD_Drone
 
 
 class system_model:
@@ -11,7 +12,7 @@ class system_model:
         self.mission_success = False
         self.mission_max_status = self.mission_Not_end
         self.mission_duration = 0  # T_M in paper. unit: round
-        self.mission_duration_max = 50     # unit: round
+        self.mission_duration_max = 30    # unit: round
         # self.mission_max_duration = 200  # T_vision^{max}_m in paper
         self.mission_condition = 0  # -1 means game not end, 0 means mission success, 1 means mission failed by unfinished scan, 2, failed by no time, 3. failed by no MD
         self.map_cell_number = 5 #10    # number of cell each side
@@ -27,15 +28,33 @@ class system_model:
         self.num_HD = 2 # 5  # number of HD
         self.MD_dict = {}  # key is id, value is class detail
         self.HD_dict = {}
+        self.Drone_dict = {}
+        self.RLD = RLD_Drone(self.num_MD + self.num_HD, self.update_freq)
         self.MD_crashed_IDs = []  # includes MD crashed or crashed
         self.assign_HD()
         self.assign_MD()
+        self.assign_Drone_dict()
+        self.init_neighbor_table()
+        self.update_neighbor_table()
+        self.update_RLD_connection()
 
+
+    def assign_Drone_dict(self):
+        for MD_id, MD in self.MD_dict.items():
+            self.Drone_dict[MD_id] = MD
+        for HD_id, HD in self.HD_dict.items():
+            self.Drone_dict[HD_id] = HD
+        self.Drone_dict[self.RLD.ID] = self.RLD
 
     # MD_set only contain MD that not crash
     @property
     def MD_set(self):
         return [MD for MD in self.MD_dict.values() if not MD.crashed]
+
+    # MD_connected_set only contain MD that not crash and connected to the RLD.
+    @property
+    def MD_connected_set(self):
+        return [MD for MD in self.MD_dict.values() if not MD.crashed and MD.connect_RLD]
 
     # set of MD in mission (not in GCS)
     @property
@@ -47,10 +66,25 @@ class system_model:
     def HD_set(self):
         return [HD for HD in self.HD_dict.values() if not HD.crashed]
 
+    # HD_connected_set only contain HD that not crash
+    @property
+    def HD_connected_set(self):
+        return [HD for HD in self.HD_dict.values() if not HD.crashed and HD.connect_RLD]
+
     # set of HD in mission (not in GCS)
     @property
     def HD_mission_set(self):
         return [HD for HD in self.HD_dict.values() if not HD.crashed and not HD.in_GCS]
+
+    # RLD_set for coding convinience
+    @property
+    def RLD_set(self):
+        return [self.RLD]
+
+    # Drone_set only contain Drone that not crash
+    @property
+    def Drone_set(self):
+        return self.HD_set + self.MD_set + self.RLD_set
 
     # distance between two drones. (Eq. \eqref(Eq: distance) in paper)
     def drones_distance(self, drone_x_location, drone_y_location):
@@ -100,9 +134,10 @@ class system_model:
             map_y_index = round(cell_y - 1)     # minus 1 for ignoring GCS
             # map_size_with_station = self.map_size + 1
 
-
+            # if drone in target area
             if map_x_index in range(self.map_size) and map_y_index in range(self.map_size):
-                self.scan_map[map_x_index, map_y_index] += 0.01
+                if MD.connect_RLD:          # scan only happen when connected to RLD.
+                    self.scan_map[map_x_index, map_y_index] += 0.01
                 # self.update_scan(map_x_index, map_y_index, 0.01)
             # else:
             #     print_debug("out of Mape range")
@@ -145,7 +180,7 @@ class system_model:
         pass
 
     def battery_consume(self):
-        # TODO: avoid recalc when unused drone in base station. Only recalc when: 1. drone crashed. 2. drone low battery. 3.....
+        # avoid recalc when unused drone in base station. Only recalc when: 1. drone crashed. 2. drone low battery. 3.....
         for MD in self.MD_set:
             if MD.battery_update():
                 if self.print: print(f"detected MD {MD.ID} charging complete, recalculate trajectory")
@@ -164,6 +199,14 @@ class system_model:
                     total_consum += HD.consume_rate
         return total_consum
 
+    def MD_one_round_consume(self):
+        total_consum = 0
+        for MD in self.MD_set:
+            if not MD.in_GCS:
+                if not MD.crashed:
+                    total_consum += MD.consume_rate
+        return total_consum
+
 
     def assign_HD(self):
         for index in range(self.num_HD):
@@ -172,6 +215,68 @@ class system_model:
     def assign_MD(self):
         for index in range(self.num_MD):
             self.MD_dict[index + self.num_HD] = Mission_Drone(index + self.num_HD, self.update_freq)
+
+    def init_neighbor_table(self):
+        for drone in self.HD_set + self.MD_set:
+            for id in range(self.num_MD + self.num_HD):
+                drone.neighbor_table[id] = True
+            drone.neighbor_table[self.num_MD + self.num_HD] = True     # this oen is for adding RLD
+
+    def update_neighbor_table(self):
+        for drone in self.HD_set + self.MD_set:
+            for neighbor in self.HD_set + self.MD_set + self.RLD_set: # add RLD to calculate if in the range of RLD
+                temp_dist = self.calc_distance(drone.xyz_temp, neighbor.xyz_temp)
+                sign_range = self.signal_range(drone.signal)    # only consider the signal of the drone that send data.
+                if temp_dist > sign_range:
+                    drone.neighbor_table[neighbor.ID] = False
+                else:
+                    drone.neighbor_table[neighbor.ID] = True
+                # sign_range_1 = self.signal_range(drone.signal)
+                # sign_range_2 = self.signal_range(neighbor.signal)
+                # if temp_dist > max(sign_range_1, sign_range_2):
+                #     drone.neighbor_table[neighbor.ID] = False
+                # else:
+                #     drone.neighbor_table[neighbor.ID] = True
+
+
+        return
+
+    def update_RLD_connection(self):
+        for drone in self.HD_set + self.MD_set:
+            self.init_visited()     # make all visited be False for DFS algorithm
+            res = self.DFS_find_RLD(drone)
+            # if not res:
+            #     print("False Connect", drone.ID, drone.xyz_temp)
+            drone.connect_RLD = res
+
+    def init_visited(self):
+        for drone in self.HD_set + self.MD_set:
+            drone.visited = False
+
+
+    def DFS_find_RLD(self, drone):
+        drone.visited = True
+        neighbor_list = self.connected_neighbors(drone)
+        for neighbor in neighbor_list:
+            if neighbor.type == 'RLD':
+                return True
+            else:
+                if neighbor.visited is False:
+                    res = self.DFS_find_RLD(neighbor)
+                    if res is True:
+                        return True
+        return False
+
+
+    def connected_neighbors(self, drone):
+        res = []
+        for neigh_id, neigh_state in drone.neighbor_table.items():  # neigh_state means connected or not.
+            if neigh_state is True:
+                if not self.Drone_dict[neigh_id].crashed:
+                    res.append(self.Drone_dict[neigh_id])
+        return res
+
+
 
     def sample_MD(self):
         return Mission_Drone(-1, self.update_freq)

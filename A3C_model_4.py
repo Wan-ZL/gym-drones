@@ -104,6 +104,7 @@ class ActorCritic(nn.Module):
         # print("obs", obs, "self.pi_net", self.pi_net)
         logits = self.pi_net(obs)
         prob = F.softmax(logits, dim=1).data
+        # print("Pi Net Prob:", prob)
         m = self.distribution(prob)
         return m.sample().numpy()[0]
 
@@ -128,7 +129,7 @@ class ActorCritic(nn.Module):
         return total_loss, c_loss_mean, a_loss_mean
 
 class MultiAgent(mp.Process):
-    def __init__(self, gnet_def, gnet_att, opt_def, opt_att, shared_dict, lr_decay, gamma, epsilon, epsilon_decay, MAX_EP, fixed_seed, trial, name_id: int, player='def', is_custom_env=True):
+    def __init__(self, gnet_def, gnet_att, opt_def, opt_att, shared_dict, lr_decay, gamma, epsilon, epsilon_decay, MAX_EP, fixed_seed, trial, name_id: int, player='def', exist_model=False, is_custom_env=True):
         super(MultiAgent, self).__init__()
         self.name_id = name_id
         self.name = 'w%02i' % name_id
@@ -140,6 +141,7 @@ class MultiAgent(mp.Process):
         self.g_ep = shared_dict['global_ep']
         self.g_r_list = shared_dict['glob_r_list']
         self.lr_decay = lr_decay
+        self.exist_model = exist_model
         self.is_custom_env = is_custom_env
         if is_custom_env:
             self.env = HyperGameSim(fixed_seed=fixed_seed)
@@ -157,11 +159,23 @@ class MultiAgent(mp.Process):
         self.lnet_def = ActorCritic(input_dims=self.input_dims_def, n_actions=self.n_actions_def, epsilon=epsilon, epsilon_decay=epsilon_decay,
                                 pi_net_struc=gnet_def.pi_net_struc,
                                 v_net_struct=gnet_def.v_net_struct, fixed_seed=fixed_seed)  # local network for defender
+        # load pre-trained model's parameters
+        if self.exist_model:
+            path = "trained_model/def/trained_A3C"
+            self.lnet_def.load_state_dict(torch.load(path))
+            self.lnet_def.eval()
+
         if is_custom_env:
             self.lnet_att = ActorCritic(input_dims=self.input_dims_att, n_actions=self.n_actions_att, epsilon=epsilon,
                                         epsilon_decay=epsilon_decay,
                                         pi_net_struc=gnet_att.pi_net_struc,
                                         v_net_struct=gnet_att.v_net_struct, fixed_seed=fixed_seed)  # local network for attacker
+            # load pre-trained model's parameters
+            if self.exist_model:
+                path = "trained_model/att/trained_A3C"
+                self.lnet_att.load_state_dict(torch.load(path))
+                self.lnet_att.eval()
+
         self.gamma = gamma
         self.MAX_EP = MAX_EP
         self.trial = trial
@@ -212,7 +226,7 @@ class MultiAgent(mp.Process):
             else:
                 obs_def = self.env.reset()
 
-            # TODO: edit here
+
             buffer_s_def, buffer_a_def, buffer_r_def = [], [], []
             buffer_s_att, buffer_a_att, buffer_r_att = [], [], []
             total_loss_set_def = []
@@ -239,9 +253,13 @@ class MultiAgent(mp.Process):
                 # choose action
                 # action = self.lnet.choose_action(v_wrap(obs[None, :]))
                 # assign action to attacker or defender
+                # print("Defender")
                 action_def = self.lnet_def.choose_action(v_wrap(obs_def[None, :]))
+                # print("action_def", action_def)
                 if self.is_custom_env:
+                    # print("Attacker")
                     action_att = self.lnet_att.choose_action(v_wrap(obs_att[None, :]))
+                    # print("action_att", action_att)
 
                 if self.is_custom_env:  # for Drone environment
 
@@ -254,6 +272,7 @@ class MultiAgent(mp.Process):
                     #     action_def = action
                     # interaction with environment
                     the_obs_, the_reward, done, info = self.env.step(action_def=action_def, action_att=action_att)
+                    # the_obs_, the_reward, done, info = self.env.step()      # TODO: this is a test
                     # extract different reward and observation for attacker and defender
                     # if self.player == "att":
                     #     reward = the_reward['att']
@@ -291,39 +310,41 @@ class MultiAgent(mp.Process):
                 score_def += reward_def
                 if self.is_custom_env:
                     score_att += reward_att
-                # add to memory
-                buffer_a_def.append(action_def)
-                buffer_s_def.append(obs_def)
-                buffer_r_def.append(reward_def)
-                if self.is_custom_env:
-                    buffer_a_att.append(action_att)
-                    buffer_s_att.append(obs_att)
-                    buffer_r_att.append(reward_att)
 
-                # update global and assign to local net
-                if total_step % 5 == 0 or done:
-                    # sync
-                    total_loss_def, c_loss_def, a_loss_def = push_and_pull(self.opt_def, self.lnet_def, self.gnet_def,
-                                                                           done, obs_new_def, buffer_s_def,
-                                                                           buffer_a_def, buffer_r_def, self.gamma)
+                if not self.exist_model:  # no need to train a trained model
+                    # add to memory
+                    buffer_a_def.append(action_def)
+                    buffer_s_def.append(obs_def)
+                    buffer_r_def.append(reward_def)
                     if self.is_custom_env:
-                        total_loss_att, c_loss_att, a_loss_att = push_and_pull(self.opt_def, self.lnet_def,
-                                                                               self.gnet_def, done, obs_new_def,
-                                                                               buffer_s_def, buffer_a_def, buffer_r_def,
-                                                                               self.gamma)
-                    # save loss data for display
-                    total_loss_set_def.append(total_loss_def.item())
-                    c_loss_set_def.append(c_loss_def.item())
-                    a_loss_set_def.append(a_loss_def.item())
-                    if self.is_custom_env:
-                        total_loss_set_att.append(total_loss_att.item())
-                        c_loss_set_att.append(c_loss_att.item())
-                        a_loss_set_att.append(a_loss_att.item())
+                        buffer_a_att.append(action_att)
+                        buffer_s_att.append(obs_att)
+                        buffer_r_att.append(reward_att)
 
-                    # clear memory
-                    buffer_s_def, buffer_a_def, buffer_r_def = [], [], []
-                    if self.is_custom_env:
-                        buffer_s_att, buffer_a_att, buffer_r_att = [], [], []
+                    # update global and assign to local net
+                    if total_step % 5 == 0 or done:
+                        # sync
+                        total_loss_def, c_loss_def, a_loss_def = push_and_pull(self.opt_def, self.lnet_def, self.gnet_def,
+                                                                               done, obs_new_def, buffer_s_def,
+                                                                               buffer_a_def, buffer_r_def, self.gamma)
+                        if self.is_custom_env:
+                            total_loss_att, c_loss_att, a_loss_att = push_and_pull(self.opt_def, self.lnet_def,
+                                                                                   self.gnet_def, done, obs_new_def,
+                                                                                   buffer_s_def, buffer_a_def, buffer_r_def,
+                                                                                   self.gamma)
+                        # save loss data for display
+                        total_loss_set_def.append(total_loss_def.item())
+                        c_loss_set_def.append(c_loss_def.item())
+                        a_loss_set_def.append(a_loss_def.item())
+                        if self.is_custom_env:
+                            total_loss_set_att.append(total_loss_att.item())
+                            c_loss_set_att.append(c_loss_att.item())
+                            a_loss_set_att.append(a_loss_att.item())
+
+                        # clear memory
+                        buffer_s_def, buffer_a_def, buffer_r_def = [], [], []
+                        if self.is_custom_env:
+                            buffer_s_att, buffer_a_att, buffer_r_att = [], [], []
 
 
 
@@ -335,6 +356,8 @@ class MultiAgent(mp.Process):
 
                 total_step += 1
 
+            score_def_avg = score_def / total_step
+            score_att_avg = score_att / total_step
             # save data to shared dictionary for tensorboard
             with self.g_ep.get_lock():
                 self.g_ep.value += 1
@@ -343,14 +366,16 @@ class MultiAgent(mp.Process):
                 self.shared_dict["lr_writer"].put(self.opt_def.param_groups[0]['lr'])
                 self.shared_dict["epsilon_writer"].put(self.lnet_def.epsilon)
                 self.shared_dict["score_def_writer"].put(score_def)
-                self.shared_dict['t_loss_def_writer'].put(sum(total_loss_set_def) / len(total_loss_set_def))
-                self.shared_dict['c_loss_def_writer'].put(sum(c_loss_set_def) / len(c_loss_set_def))
-                self.shared_dict['a_loss_def_writer'].put(sum(a_loss_set_def) / len(a_loss_set_def))
+                self.shared_dict["score_def_avg_writer"].put(score_def_avg)
+                self.shared_dict['t_loss_def_writer'].put(sum(total_loss_set_def) / len(total_loss_set_def) if len(total_loss_set_def) else 0)
+                self.shared_dict['c_loss_def_writer'].put(sum(c_loss_set_def) / len(c_loss_set_def) if len(c_loss_set_def) else 0)
+                self.shared_dict['a_loss_def_writer'].put(sum(a_loss_set_def) / len(a_loss_set_def) if len(a_loss_set_def) else 0)
                 if self.is_custom_env:
                     self.shared_dict["score_att_writer"].put(score_att)
-                    self.shared_dict['t_loss_att_writer'].put(sum(total_loss_set_att) / len(total_loss_set_att))
-                    self.shared_dict['c_loss_att_writer'].put(sum(c_loss_set_att) / len(c_loss_set_att))
-                    self.shared_dict['a_loss_att_writer'].put(sum(a_loss_set_att) / len(a_loss_set_att))
+                    self.shared_dict["score_att_avg_writer"].put(score_att_avg)
+                    self.shared_dict['t_loss_att_writer'].put(sum(total_loss_set_att) / len(total_loss_set_att) if len(total_loss_set_att) else 0)
+                    self.shared_dict['c_loss_att_writer'].put(sum(c_loss_set_att) / len(c_loss_set_att) if len(c_loss_set_att) else 0)
+                    self.shared_dict['a_loss_att_writer'].put(sum(a_loss_set_att) / len(a_loss_set_att) if len(a_loss_set_att) else 0)
                 if self.is_custom_env:
                     self.shared_dict['att_succ_rate_writer'].put(
                         sum(att_succ_rate_set) / len(att_succ_rate_set) if len(att_succ_rate_set) else 0)
@@ -372,8 +397,10 @@ class MultiAgent(mp.Process):
                     current_eps = self.shared_dict['eps_writer'].get()
                     current_eps = ep_counter
                     # write score
-                    writer.add_scalar("Score Defender", self.shared_dict["score_def_writer"].get(), current_eps)
-                    writer.add_scalar("Score Attacker", self.shared_dict["score_att_writer"].get(), current_eps)
+                    writer.add_scalar("Accumulated Reward Defender", self.shared_dict["score_def_writer"].get(), current_eps)
+                    writer.add_scalar("Accumulated Reward Attacker", self.shared_dict["score_att_writer"].get(), current_eps)
+                    writer.add_scalar("Averaged Reward Defender", self.shared_dict["score_def_avg_writer"].get(), current_eps)
+                    writer.add_scalar("Averaged Reward Attacker", self.shared_dict["score_att_avg_writer"].get(), current_eps)
                     # write lr
                     writer.add_scalar("Learning rate", self.shared_dict["lr_writer"].get(), current_eps)
                     # write epsilon
@@ -416,11 +443,14 @@ class MultiAgent(mp.Process):
                                           self.shared_dict['def_reward_1_writer'].get(), current_eps)
                         writer.add_scalar("Defender's Reward (component 2)",
                                           self.shared_dict['def_reward_2_writer'].get(), current_eps)
+                        writer.add_scalar("Max Mission Duration", self.env.system.mission_duration_max, current_eps)
 
                     ep_counter += 1
 
-            self.scheduler_def.step()  # update learning rate each episode (each agent will update lr independently)
-            self.lnet_def.epsilon_decay_step()  # update epsilon each episode
+            if not self.exist_model:  # no need to decay lr and epsilon for a trained model
+                self.scheduler_def.step()  # update learning rate each episode (each agent will update lr independently)
+                self.lnet_def.epsilon_decay_step()  # update epsilon each episode
+
             if self.is_custom_env:
                 self.scheduler_att.step()  # update learning rate each episode (each agent will update lr independently)
                 self.lnet_att.epsilon_decay_step()  # update epsilon each episode

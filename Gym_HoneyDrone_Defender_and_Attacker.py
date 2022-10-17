@@ -153,7 +153,7 @@ class HyperGameSim(Env):
             description='Helix flight script using CtrlAviary or VisionAviary and DSLPIDControl')
         parser.add_argument('--drone', default="cf2p", type=DroneModel, help='Drone model (default: CF2X)', metavar='',
                             choices=DroneModel)
-        parser.add_argument('--num_drones', default=num_HD + num_MD, type=int, help='Number of drones', metavar='')
+        parser.add_argument('--num_drones', default=num_HD + num_MD + 1, type=int, help='Number of drones', metavar='')
         parser.add_argument('--physics', default="pyb", type=Physics, help='Physics updates (default: PYB)', metavar='',
                             choices=Physics)
         parser.add_argument('--vision', default=False, type=str2bool,
@@ -229,6 +229,9 @@ class HyperGameSim(Env):
         for HD in self.system.HD_set:
             HD.assign_destination(INIT_XYZS[HD.ID])
             HD.xyz_temp = HD.xyz
+        for RLD in self.system.RLD_set:
+            RLD.assign_destination((INIT_XYZS[RLD.ID]))
+            RLD.xyz_temp = RLD.xyz
 
         # disconnect exist physics client, and create a new clident
         p.loadURDF("duck_vhacd.urdf", self.attacker.xyz, physicsClientId=PYB_CLIENT)
@@ -248,11 +251,11 @@ class HyperGameSim(Env):
         '''
 
         if action_def is None:
-            # action_def = np.random.randint(0, 9)    # TODO: this is a test
-            action_def = 5
+            action_def = np.random.randint(0, 9)
+            # action_def = 4 # 5
         if action_att is None:
-            # action_att = np.random.randint(0, 9)    # TODO: this is a test
-            action_att = 5
+            action_att = np.random.randint(0, 9)
+            # action_att = 4 # 5
         # print("action_def", action_def, "action_att", action_att)
 
         # pybullet environment
@@ -295,25 +298,31 @@ class HyperGameSim(Env):
         # else:
         #     reward_def = 0
         energy_HD = self.system.HD_one_round_consume()
-        mission_effect = w_MS * mission_complete_ratio + w_AC * self.system.aliveDroneCount() / (
-                self.system.num_MD + self.system.num_HD) + w_MT * (1 - self.system.mission_duration / self.system.mission_duration_max) - energy_HD
-        reward_def = math.exp(-1/mission_effect)
+        energy_MD = self.system.MD_one_round_consume()
+        # mission_effect = w_MS * mission_complete_ratio + w_AC * self.system.aliveDroneCount() / (
+        #         self.system.num_MD + self.system.num_HD) + w_MT * (1 - (self.system.mission_duration / self.system.mission_duration_max)) - energy_HD
+        # reward_def = math.exp(-1/mission_effect)    # old reward function
+        N_AC = len(self.system.MD_connected_set) + len(self.system.HD_connected_set)
+        reward_def = math.exp(-1/N_AC) if N_AC else 0
 
 
         # Attacker's Reward
-        w_AS = 0.9  # weight for attack success
-        w_AC = 0.05  # weight for attack cost
-        w_SC = 0.05  # weight for number of cell been scanned
+        # w_AS = 0.9  # weight for attack success
+        # w_AC = 0.05  # weight for attack cost
+        # w_SC = 0.05  # weight for number of cell been scanned
         one_round_att_counter = float(self.attacker.att_counter)
         one_round_att_succ_counter = float(self.attacker.att_succ_counter)
         cell_complete_count = self.system.scanCompletePercent()
         # one_round_att_counter = 0   # This is a Test, TODO: remove it (I think we can remove this as the attack success rate is fixed)
         # reward_att = w_AS * one_round_att_succ_counter - w_AC * one_round_att_counter - w_SC * cell_complete_count
         # reward_att = one_round_att_counter
-        mission_effect_att = w_MS * mission_complete_ratio + w_AC * self.system.aliveDroneCount() / (
-                self.system.num_MD + self.system.num_HD) + w_MT * (
-                                     1 - self.system.mission_duration / self.system.mission_duration_max)
-        reward_att = 1 - math.exp(-1/mission_effect_att)
+        # mission_effect_att = w_MS * mission_complete_ratio + w_AC * self.system.aliveDroneCount() / (
+        #         self.system.num_MD + self.system.num_HD) + w_MT * (
+        #                              1 - self.system.mission_duration / self.system.mission_duration_max)
+        # reward_att = 1 - math.exp(-1/mission_effect_att)
+        reward_numerate = float(1+(self.system.num_MD + self.system.num_HD-self.system.aliveDroneCount()))
+        reward_demonirate = float(self.system.mission_duration)
+        reward_att = 1 - math.exp(-(reward_numerate/reward_demonirate))
 
 
         # if self.attacker.att_counter:
@@ -339,6 +348,8 @@ class HyperGameSim(Env):
 
         info = {}
         # info['att_succ_rate'] = att_succ_rate
+        info['action_def'] = action_def
+        info['action_att'] = action_att
         info['att_succ_counter'] = self.attacker.att_succ_counter
         info['att_counter'] = self.attacker.att_counter
         info["mission_condition"] = self.system.mission_condition
@@ -349,12 +360,18 @@ class HyperGameSim(Env):
             total_energy_consump += MD.accumulated_consumption
         info["total_energy_consump"] = total_energy_consump
         info["scan_percent"] = self.system.scanCompletePercent()
-        info["att_reward_0"] = w_AS * one_round_att_succ_counter
-        info["att_reward_1"] = - w_AC * one_round_att_counter
-        info["att_reward_2"] = - w_SC * cell_complete_count
+        info["att_reward_0"] = reward_numerate
+        info["att_reward_1"] = - reward_demonirate
+        info["att_reward_2"] = - reward_numerate/reward_demonirate
         info["def_reward_0"] = w_MS * mission_complete_ratio
         info["def_reward_1"] = w_AC * self.system.aliveDroneCount() / (self.system.num_MD + self.system.num_HD)
         info["def_reward_2"] = w_MT * self.system.mission_duration / self.system.mission_duration_max
+        info["MDHD_active_num"] = len(self.system.MD_set) + len(self.system.HD_set)
+        info["MDHD_connected_num"] = len(self.system.MD_connected_set) + len(self.system.HD_connected_set)
+        info["mission_complete_rate"] = mission_complete_ratio
+        info["remaining_time"] = 1 - (self.system.mission_duration / self.system.mission_duration_max)
+        info["energy_HD"] = energy_HD
+        info["energy_MD"] = energy_MD
         return state, reward, done, info
 
     def roundBegin(self, action_def, action_att):
@@ -385,6 +402,9 @@ class HyperGameSim(Env):
         # # for HD update next destination
         self.defender.update_HD_next_destination()
 
+        # for RLD update the fixed destination
+        self.defender.update_RLD_next_destination()
+
         # Attacker
         self.attacker.observe()
         self.attacker.select_strategy(action_att)
@@ -405,6 +425,7 @@ class HyperGameSim(Env):
         for _ in range(self.update_freq):
             self.updateTempLoca(self.system.MD_set, self.ARGS.control_freq_hz)
             self.updateTempLoca(self.system.HD_set, self.ARGS.control_freq_hz)
+            self.updateTempLoca(self.system.RLD_set, self.ARGS.control_freq_hz)
 
             obs, reward, done, info = self.env.step(self.pybullet_action)
 
@@ -434,6 +455,12 @@ class HyperGameSim(Env):
             #### Sync the simulation ###################################
             if self.ARGS.gui:
                 sync(self.frameN, self.START, self.env.TIMESTEP)
+
+        # update Drone's neighbor table
+        self.system.update_neighbor_table()
+        # update Drone's fleet table
+        self.system.update_RLD_connection()
+        return
 
     def render(self, *args):
         pass

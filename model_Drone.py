@@ -10,16 +10,14 @@ class Drone:
         # self.charging = True
         self.xyz = np.zeros(3)  # Droen location (location of destination)
         self.xyz_temp = self.xyz.copy()  # intermediate location to destination
-        # TODO: drone crash when move long distance. Find a good way to control drone
-        # TODO: drone not arrive before go next destination, solve this by keeping the same destination if target is not scan complete.
         self.speed_per_frame_max = 0.08     # this value obtained from experiment that drone doesn't crash for a 150 meter fly in one round
         self.crashed = False             #
         self.in_GCS = True
-        self.battery_max = 100000.0         # battery level
+        self.battery_max = 750 # 100000.0         # battery level (B078ZZPZ5Z battery on Amazon)
         self.battery = self.battery_max
-        self.E_P = 0.001
-        self.E_C = 0.001
-        self.E_R = 0.001
+        self.E_P = 250.0/7/60/500 # 0.001   # 500 is update_freq of the simulator, 60 is 60 seconds in one minute. 250.0/7 is estimated drone platform energy rate (fly time 7 minutes)
+        self.E_C = 0.7/500 # 0.001
+        self.E_R = 0.1/500 # 0.001
         self.consume_rate = self.E_P + self.E_C + self.E_R
         self.accumulated_consumption = 0        # this will show the total energy consumption in one episode
         # self.low_battery_thres = self.update_freq * self.consume_rate + 0.1  # this value is based on the consumption in one round
@@ -27,6 +25,9 @@ class Drone:
         self.signal = self.max_signal       # unit: dBm
         self.signal_radius = 1000           # unit meter
         self.been_attack_record = (0,0)     # the first element is # of success, the second element is # of failure.
+        self.neighbor_table = {}  # key: drone ID, value: True means connected to this neighbor, False means not connected.
+        self.connect_RLD = True # True means connected to RLD, False means disconnected from RLD.
+        self.visited = False    # design for DFS search
 
     # def battery_update(self):       # consume energy or charging (True means drone is ready (recalculate trajectory))
     #     if not self.charging and not self.crashed:

@@ -147,6 +147,9 @@ class defender_model(player_model):
             # print_debug("L_MD_set", L_MD_set)
         if self.print: print("HD protecting", S_set_HD)
 
+    def update_RLD_next_destination(self):
+        self.system.RLD.assign_destination_xy(np.array([self.system.map_size/2, self.system.map_size/2]))
+
 
 
     def generate_z_list(self):

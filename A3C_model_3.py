@@ -98,16 +98,17 @@ class ActorCritic(nn.Module):
             print("Random action. Epsilon is", self.epsilon)
             return np.int64(torch.randint(0, self.n_actions, (1,)).item())
 
-        self.eval()
+        # self.eval()
         # logits, _ = self.forward(s)
         logits = self.pi_net(obs)
         prob = F.softmax(logits, dim=1).data
-        # print("prob", torch.sum(torch.isnan(prob)))
+        # print("prob", prob)
         # if torch.sum(torch.isnan(prob)):    # avoid 'nan' error. When [nan], randomly choose an action
         #     return torch.randint(0, len(prob), (1,)).numpy()[0]
         # else:
         #     m = self.distribution(prob)
         #     return m.sample().numpy()[0]
+        # print("Pi Net Prob:", prob)
         m = self.distribution(prob)
         return m.sample().numpy()[0]
 
@@ -115,7 +116,9 @@ class ActorCritic(nn.Module):
         # print("v_t", v_t)
         self.train()
         # logits, values = self.forward(s)
+        print("here")
         logits = self.pi_net(s)
+        print("logits", logits)
         values = self.v_net(s)
         td = v_t - values
         c_loss = td.pow(2)
@@ -133,7 +136,7 @@ class ActorCritic(nn.Module):
 
 
 class Agent(mp.Process):
-    def __init__(self, gnet, opt, shared_dict, lr_decay, gamma, epsilon, epsilon_decay, MAX_EP, fixed_seed, trial, name_id: int, player='def', is_custom_env=True):
+    def __init__(self, gnet, opt, shared_dict, lr_decay, gamma, epsilon, epsilon_decay, MAX_EP, fixed_seed, trial, name_id: int, player='def', exist_model=False, is_custom_env=True):
         super(Agent, self).__init__()
         self.name_id = name_id
         self.name = 'w%02i' % name_id
@@ -143,6 +146,7 @@ class Agent(mp.Process):
         self.g_ep = shared_dict['global_ep']
         self.g_r_list = shared_dict['glob_r_list']
         self.lr_decay = lr_decay
+        self.exist_model = exist_model
         self.is_custom_env = is_custom_env
         if is_custom_env:
             self.env = HyperGameSim(fixed_seed=fixed_seed)
@@ -155,6 +159,14 @@ class Agent(mp.Process):
             self.N_A = self.env.action_space.n
         self.lnet = ActorCritic(input_dims=self.N_S, n_actions=self.N_A, epsilon=epsilon, epsilon_decay=epsilon_decay, pi_net_struc=gnet.pi_net_struc,
                           v_net_struct=gnet.v_net_struct, fixed_seed=fixed_seed)  # local network
+        # load pre-trained model's parameters
+        if self.exist_model:
+            path = "trained_model/" + player + "/trained_A3C"
+            self.lnet.load_state_dict(torch.load(path))
+            self.lnet.eval()
+        else:
+            self.lnet.train()
+
         self.gamma = gamma
         self.MAX_EP = MAX_EP
         self.trial = trial
@@ -212,8 +224,8 @@ class Agent(mp.Process):
             def_reward_0 = 0
             def_reward_1 = 0
             def_reward_2 = 0
-            score = 0
-            oppo_score = 0
+            score_att = 0
+            score_def = 0
             total_step = 1
             done = False
             while not done:
@@ -237,13 +249,11 @@ class Agent(mp.Process):
                     the_obs_, the_reward, done, info = self.env.step(action_def=action_def, action_att=action_att)
                     # the_obs_, the_reward, done, info = self.env.step()      # TODO: this is a test
                     # extract different reward and observation for attacker and defender
+                    reward_att = the_reward['att']
+                    reward_def = the_reward['def']
                     if self.player == "att":
-                        reward = the_reward['att']
-                        oppo_reward = the_reward['def']
                         obs_ = the_obs_['att']
                     elif self.player == "def":
-                        reward = the_reward['def']
-                        oppo_reward = the_reward['att']
                         obs_ = the_obs_['def']
                     else:
                         raise Exception("invalide 'player_name'")
@@ -258,45 +268,60 @@ class Agent(mp.Process):
                     def_reward_1 += info["def_reward_1"]
                     def_reward_2 += info["def_reward_2"]
                 else:
-                    obs_, reward, done, _ = self.env.step(action)
-                    oppo_reward = 0     # no opponent, assign 0 for avoiding error
+                    obs_, reward_def, done, _ = self.env.step(action)   # assign reward to reward_def, ignore reward_att
+                    reward_att = 0
 
-                # if done: reward = -1
                 # add data from each step
-                score += reward
-                oppo_score += oppo_reward
-                # add to memory
-                buffer_a.append(action)
-                buffer_s.append(obs)
-                buffer_r.append(reward)
+                score_att += reward_att
+                score_def += reward_def
 
-                # update global and assign to local net
-                if total_step % 5 == 0 or done:
-                    # sync
-                    total_loss, c_loss, a_loss = push_and_pull(self.opt, self.lnet, self.gnet, done, obs_, buffer_s,
-                                                               buffer_a, buffer_r, self.gamma)
-                    # save loss data for display
-                    total_loss_set.append(total_loss.item())
-                    c_loss_set.append(c_loss.item())
-                    a_loss_set.append(a_loss.item())
-                    # clear memory
-                    buffer_s, buffer_a, buffer_r = [], [], []
+                if not self.exist_model:  # no need to train a trained model
+                    # add to memory
+                    buffer_a.append(action)
+                    buffer_s.append(obs)
+                    if self.player == "att":
+                        buffer_r.append(reward_att)
+                    elif self.player == "def":
+                        buffer_r.append(reward_def)
+                    else:
+                        raise Exception("invalide 'player_name'")
+                    # buffer_r.append(reward)
+
+                    # update global and assign to local net
+                    if total_step % 5 == 0 or done:
+                        print("here")
+                        # sync
+                        total_loss, c_loss, a_loss = push_and_pull(self.opt, self.lnet, self.gnet, done, obs_, buffer_s,
+                                                                   buffer_a, buffer_r, self.gamma)
+                        # save loss data for display
+                        total_loss_set.append(total_loss.item())
+                        c_loss_set.append(c_loss.item())
+                        a_loss_set.append(a_loss.item())
+                        # clear memory
+                        buffer_s, buffer_a, buffer_r = [], [], []
 
                 obs = obs_
                 total_step += 1
 
+            score_def_avg = score_def / total_step
+            score_att_avg = score_att / total_step
             # save data to shared dictionary for tensorboard
             with self.g_ep.get_lock():
                 self.g_ep.value += 1
                 self.shared_dict['eps_writer'].put(temp_ep)
-                self.g_r_list.append(score)
-                self.shared_dict["score_writer"].put(score)
-                self.shared_dict["oppo_score_writer"].put(oppo_score)
+                if self.player == "att":
+                    self.g_r_list.append(score_att)
+                else:
+                    self.g_r_list.append(score_def)
+                self.shared_dict["score_def_writer"].put(score_def)
+                self.shared_dict["score_att_writer"].put(score_att)
+                self.shared_dict["score_def_avg_writer"].put(score_def_avg)
+                self.shared_dict["score_att_avg_writer"].put(score_att_avg)
                 self.shared_dict["lr_writer"].put(self.opt.param_groups[0]['lr'])
                 self.shared_dict["epsilon_writer"].put(self.lnet.epsilon)
-                self.shared_dict['t_loss_writer'].put(sum(total_loss_set)/len(total_loss_set))
-                self.shared_dict['c_loss_writer'].put(sum(c_loss_set) / len(c_loss_set))
-                self.shared_dict['a_loss_writer'].put(sum(a_loss_set) / len(a_loss_set))
+                self.shared_dict['t_loss_writer'].put(sum(total_loss_set)/len(total_loss_set) if len(total_loss_set) else 0)
+                self.shared_dict['c_loss_writer'].put(sum(c_loss_set) / len(c_loss_set) if len(c_loss_set) else 0)
+                self.shared_dict['a_loss_writer'].put(sum(a_loss_set) / len(a_loss_set) if len(a_loss_set) else 0)
                 if self.is_custom_env:
                     self.shared_dict['att_succ_rate_writer'].put(sum(att_succ_rate_set) / len(att_succ_rate_set) if len(att_succ_rate_set) else 0)
                     self.shared_dict['mission_condition_writer'].put(info["mission_condition"])
@@ -318,8 +343,10 @@ class Agent(mp.Process):
                     current_eps = self.shared_dict['eps_writer'].get()
                     current_eps = ep_counter
                     # write score
-                    writer.add_scalar("Score", self.shared_dict["score_writer"].get(), current_eps)
-                    writer.add_scalar("Opponent's Score", self.shared_dict["oppo_score_writer"].get(), current_eps)
+                    writer.add_scalar("Accumulated Reward Defender", self.shared_dict["score_def_writer"].get(), current_eps)
+                    writer.add_scalar("Accumulated Reward Attacker", self.shared_dict["score_att_writer"].get(), current_eps)
+                    writer.add_scalar("Averaged Reward Defender", self.shared_dict["score_def_avg_writer"].get(), current_eps)
+                    writer.add_scalar("Averaged Reward Attacker", self.shared_dict["score_att_avg_writer"].get(), current_eps)
                     # write lr
                     writer.add_scalar("Learning rate", self.shared_dict["lr_writer"].get(), current_eps)
                     # write epsilon
@@ -359,9 +386,10 @@ class Agent(mp.Process):
 
                     ep_counter += 1
 
-            self.scheduler.step()  # update learning rate each episode (each agent will update lr independently)
-            self.lnet.epsilon_decay_step()  # update epsilon each episode
-            print(self.name, 'episode ', self.g_ep.value, 'reward %.1f' % score)
+            if not self.exist_model:  # no need to decay lr and epsilon for a trained model
+                self.scheduler.step()  # update learning rate each episode (each agent will update lr independently)
+                self.lnet.epsilon_decay_step()  # update epsilon each episode
+            print(self.name, 'episode ', self.g_ep.value, 'defender reward %.1f' % score_def, 'attacker reward %.1f' % score_att)
         # self.res_queue.put(None)
 
         if self.is_custom_env: self.env.close_env()
