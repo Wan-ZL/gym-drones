@@ -5,17 +5,17 @@ from model_RLD import RLD_Drone
 
 
 class system_model:
-    def __init__(self):
+    def __init__(self, mission_duration_max=30, map_cell_number=5):
         self.print = False
         self.update_freq = 500  # environment frame per round
         self.mission_Not_end = 2  # 2 means True, use 2 here to allow drone back to BaseStation in debug mode
         self.mission_success = False
         self.mission_max_status = self.mission_Not_end
         self.mission_duration = 0  # T_M in paper. unit: round
-        self.mission_duration_max = 30    # unit: round
+        self.mission_duration_max = mission_duration_max #30    # unit: round
         # self.mission_max_duration = 200  # T_vision^{max}_m in paper
         self.mission_condition = 0  # -1 means game not end, 0 means mission success, 1 means mission failed by unfinished scan, 2, failed by no time, 3. failed by no MD
-        self.map_cell_number = 5 #10    # number of cell each side
+        self.map_cell_number = map_cell_number #5    # number of cell each side
         self.cell_size = 100  # in meter     (left bottom point of cell represents the coordinate of cell
         self.map_size = self.map_cell_number * self.cell_size   # in meter
         self.map_ori_x = 1  # original point of target area

@@ -23,7 +23,7 @@ class attacker_model(player_model):
         # condition edit in 'def observe()'. It convert signal strength to strategy index
         self.target_set = []
         self.epsilon = 0.5                      # variable used in determine target range
-        self.attack_success_prob = 0.4          # attack success rate of each attack on each drone  # TODO: use CVSS to see the exploitability
+        self.attack_success_prob = 0.43          # attack success rate of each attack on each drone  # use CVSS from android device https://www.cvedetails.com/cve/CVE-2021-39804/
         self.att_counter = 0    # number of attack launched in a round
         self.att_succ_counter = 0  # count the number of drone compromised in a round
         self.max_att_budget = 5     # the maximum number of attack can launch in a round
@@ -40,7 +40,7 @@ class attacker_model(player_model):
     # observation action
     def observe(self):
         self.obs_sig_dict = {}       # key: drone ID, value: observed signal strength
-        self.S_target_dict = defaultdict(list)    # key: observed signal level, value: drone class
+        self.S_target_dict = defaultdict(list)    # key: observed signal level, value: drone classes
         # conditions = lambda x: {
         #     x < -100: -1, -100 <= x < -98.1: 0, -98.1 <= x < -96.1: 1, -96.1 <= x < -93.8: 2, -93.8 <= x < -91.1: 3,
         #     -91.1 <= x < -87.9: 4,

@@ -55,7 +55,7 @@ ObsType = TypeVar("ObsType")
 
 
 class HyperGameSim(Env):
-    def __init__(self, fixed_seed=True):
+    def __init__(self, fixed_seed=True, miss_dur=30, target_size=5):
         # variable for bullet drone env
         self.print = False
         self.gui = False
@@ -72,11 +72,12 @@ class HyperGameSim(Env):
         self.START = None
         self.ARGS = None
         self.start_time = None
-        self.initDroneEnv()
+        self.initDroneEnv(miss_dur, target_size)
         self.close_env()  # close client in init for avoiding client limit error
-
         # variable for current env
         self.fixed_seed = fixed_seed
+        self.miss_dur = miss_dur
+        self.target_size = target_size
         self.action_space = dict()
         self.action_space['def'] = Discrete(self.defender.number_of_strategy)
         self.action_space['att'] = Discrete(self.attacker.number_of_strategy)
@@ -103,10 +104,27 @@ class HyperGameSim(Env):
             if p.getConnectionInfo(self.env.getPyBulletClient())['isConnected']:
                 # print("closing client", self.env.getPyBulletClient())
                 self.env.close()
+                self.env = None
 
-    def reset(self, *args):
+    def reset(self, *args, miss_dur=30, target_size=5):
+        '''
+
+        Args:
+            *args:
+            miss_dur:  mission_duration_max. Vary this for sensitivity analysis.
+
+        Returns:
+
+        '''
         self.start_time = time.time()
-        self.initDroneEnv()
+
+        # TODO: This will cause "cannot create new thread error".
+        self.initDroneEnv(miss_dur, target_size)
+        return 1
+
+
+        # self.system.mission_duration_max = miss_dur
+        # self.system.map_cell_number = target_size
 
         self.set_random_seed()
 
@@ -133,14 +151,16 @@ class HyperGameSim(Env):
         state = {}
         state['def'] = np.array(state_def)
         state['att'] = np.array(state_att)
+
         return state
 
-    def initDroneEnv(self):
+    def initDroneEnv(self, miss_dur=30, target_size=5):
         # create model class
-        self.system = system_model()
+
+        self.system = system_model(mission_duration_max=miss_dur, map_cell_number=target_size)
         self.defender = defender_model(self.system)
         self.attacker = attacker_model(self.system)
-
+        return
         if self.print: print("attacker locaiton", self.attacker.xyz)
 
 
@@ -191,8 +211,12 @@ class HyperGameSim(Env):
         INIT_RPYS = np.array([[0, 0, i * (np.pi / 2) / self.ARGS.num_drones] for i in range(self.ARGS.num_drones)])
         AGGR_PHY_STEPS = int(self.ARGS.simulation_freq_hz / self.ARGS.control_freq_hz) if self.ARGS.aggregate else 1
 
-        # gym-like environment
+
+        # disconnect exist physics client, and create a new clident
+
         self.close_env()  # close previous client
+        # gym-like environment
+
         self.env = CtrlAviary(drone_model=self.ARGS.drone,
                               num_drones=self.ARGS.num_drones,
                               initial_xyzs=INIT_XYZS,
@@ -233,7 +257,7 @@ class HyperGameSim(Env):
             RLD.assign_destination((INIT_XYZS[RLD.ID]))
             RLD.xyz_temp = RLD.xyz
 
-        # disconnect exist physics client, and create a new clident
+
         p.loadURDF("duck_vhacd.urdf", self.attacker.xyz, physicsClientId=PYB_CLIENT)
 
         self.update_freq = self.system.update_freq

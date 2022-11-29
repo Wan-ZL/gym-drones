@@ -84,8 +84,8 @@ if __name__ == "__main__":
     sg_HD = defender.strategy # defense strategy, range [0, 10]
     # min_sg_HD = defender.min_strategy   # minimum signal level defender can choose
     # max_sg_HD = defender.max_strategy  # maximum signal level defender can choose
-    tao_lower = defender.tao_lower   # The lower bounds of the number of MDs that HDs can protect simultaneously
-    tao_upper = defender.tao_upper   # The upper bounds of the number of MDs that HDs can protect simultaneously
+    tao_lower = defender.tau_lower   # The lower bounds of the number of MDs that HDs can protect simultaneously
+    tao_upper = defender.tau_upper   # The upper bounds of the number of MDs that HDs can protect simultaneously
     map_size = system.map_size # size of surveillance area (map size)
 
 

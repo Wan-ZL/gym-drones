@@ -60,8 +60,8 @@ if __name__ == "__main__":
     num_MD = system.num_MD # number of MD (in index, MD first then HD)
     num_HD = system.num_HD  # number of HD
     sg_HD = defender.strategy # defense strategy, range [0, 10]
-    tao_lower = defender.tao_lower   # The lower bounds of the number of MDs that HDs can protect simultaneously
-    tao_upper = defender.tao_upper   # The upper bounds of the number of MDs that HDs can protect simultaneously
+    tao_lower = defender.tau_lower   # The lower bounds of the number of MDs that HDs can protect simultaneously
+    tao_upper = defender.tau_upper   # The upper bounds of the number of MDs that HDs can protect simultaneously
     map_size = system.map_size # size of surveillance area (map size)
 
     #### Define and parse (optional) arguments for the script ##

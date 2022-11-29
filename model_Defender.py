@@ -11,8 +11,8 @@ class defender_model(player_model):
         self.number_of_strategy = 10        # total number of strategy
         self.strategy2signal_set = [-20, -7.9, -0.9, 4.0, 7.9, 11.1, 13.8, 16.1, 18.1, 20]
         self.rho = 5.0        # rho used by sg_{MD} = sg_{HD} - \rho
-        self.tao_lower = 2  # The lower bounds of the number of MDs that HDs can protect simultaneously
-        self.tao_upper = 4  # The upper bounds of the number of MDs that HDs can protect simultaneously
+        self.tau_lower = 2  # The lower bounds of the number of MDs that HDs can protect simultaneously
+        self.tau_upper = 4  # The upper bounds of the number of MDs that HDs can protect simultaneously
         self.z_range_start_MD = 2.2
         self.z_range_end_MD = 3.2
         self.z_interval = 0.2       # determine the height interval between drones
@@ -115,7 +115,7 @@ class defender_model(player_model):
                 if self.system.drones_distance(self.system.MD_dict[MD_id].xyz, self.system.HD_dict[HD.ID].xyz) < p_H_r:
                     N_l_H_set = np.append(N_l_H_set, MD_id)
 
-            if N_l_H_set.size < self.tao_lower:
+            if N_l_H_set.size < self.tau_lower:
                 HD_pos_candidate = np.zeros(3)
                 N_l_H_new_set = np.empty(0)
                 for MD_id_candi in L_MD_set:  # search MD position that HD can move to so more MD can be protected
@@ -131,16 +131,16 @@ class defender_model(player_model):
                         HD_pos_candidate = self.system.MD_dict[MD_id_candi].xyz
                 self.system.HD_dict[HD.ID].assign_destination_xy(HD_pos_candidate[:2])  # nwe position for HD
                 # HD_dict[HD.ID].xyz[:2] = HD_pos_candidate[:2]
-                N_l_H_new_subset = N_l_H_new_set[:self.tao_upper]
+                N_l_H_new_subset = N_l_H_new_set[:self.tau_upper]
                 L_MD_set = np.delete(L_MD_set, np.searchsorted(L_MD_set,
                                                                N_l_H_new_subset))  # Remove protected MDs from set L_MD_set
                 S_set_HD[HD.ID] = N_l_H_new_subset  # Add deployed HD to set S_set_HD
-            elif self.tao_lower <= N_l_H_set.size and N_l_H_set.size <= self.tao_upper:
+            elif self.tau_lower <= N_l_H_set.size and N_l_H_set.size <= self.tau_upper:
                 L_MD_set = np.delete(L_MD_set,
                                      np.searchsorted(L_MD_set, N_l_H_set))  # Remove protected MDs from set L_MD_set
                 S_set_HD[HD.ID] = N_l_H_set  # Add deployed HD to set S_set_HD
             else:
-                N_l_H_subset = N_l_H_set[:self.tao_upper]
+                N_l_H_subset = N_l_H_set[:self.tau_upper]
                 L_MD_set = np.delete(L_MD_set,
                                      np.searchsorted(L_MD_set, N_l_H_subset))  # Remove protected MDs from set L_MD_set
                 S_set_HD[HD.ID] = N_l_H_subset  # Add deployed HD to set S_set_HD
