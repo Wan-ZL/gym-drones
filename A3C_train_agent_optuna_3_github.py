@@ -24,7 +24,7 @@ from Gym_HoneyDrone_Defender_and_Attacker import HyperGameSim
 
 
 
-def objective(trial, fixed_seed=True, on_server=True, is_defender=True, is_custom_env=True):
+def objective(trial, fixed_seed=True, on_server=True, is_defender=True, is_custom_env=True, miss_dur=30, target_size=5):
     start_time = time.time()
     if is_defender:
         player_name = 'def'
@@ -42,8 +42,16 @@ def objective(trial, fixed_seed=True, on_server=True, is_defender=True, is_custo
     # gamma: used to discount future reward, lr: learning rate, LR_decay: learning rate decay,
     # epsilon: probability of doing random action, epsilon_decay: epsilon decay,
     # pi_net_struc: structure of policy network, v_net_struct: structure of value network.
-    config = dict(glob_episode_thred=5000, min_episode=1000, gamma=0.99, lr=0.01, LR_decay=0.99, epsilon=0.1,
-                  epsilon_decay=0.99, pi_net_struc=[64, 128, 128, 64], v_net_struct=[64, 128, 128, 64])
+    if is_defender:
+        # default setting for defender
+        config = dict(glob_episode_thred=5000, min_episode=1000, gamma=0.913763771439141, lr=0.00135463670164839,
+                      LR_decay=0.97127344458321, epsilon=0.0119790647086112,
+                      epsilon_decay=0.970168515121627, pi_net_struc=[64, 128, 128, 64], v_net_struct=[64, 128, 128, 64])
+    else:
+        # default setting for attacker
+        config = dict(glob_episode_thred=5000, min_episode=1000, gamma=0.988784695574701, lr=0.00861718519746169,
+                      LR_decay=0.974819836482024, epsilon=0.0642399295782559,
+                      epsilon_decay=0.961601926251759, pi_net_struc=[64, 128, 128, 64], v_net_struct=[64, 128, 128, 64])
 
     # Suggest values of the hyperparameters using a trial object.
     if trial is not None:
@@ -92,8 +100,6 @@ def objective(trial, fixed_seed=True, on_server=True, is_defender=True, is_custo
     shared_dict['glob_r_list'] = Manager().list()
     shared_dict["start_time"] = str(start_time)
     shared_dict['eps_writer'] = mp.Queue()      # '_writer' means it will be used for tensorboard writer
-    # shared_dict['score_writer'] = mp.Queue()
-    # shared_dict['oppo_score_writer'] = mp.Queue()
     shared_dict['score_def_writer'] = mp.Queue()
     shared_dict['score_att_writer'] = mp.Queue()
     shared_dict['score_def_avg_writer'] = mp.Queue()
@@ -129,13 +135,13 @@ def objective(trial, fixed_seed=True, on_server=True, is_defender=True, is_custo
 
     # parallel training
     if on_server:
-        num_worker = 120  # mp.cpu_count()     # update this for matching server's resources
+        num_worker = 128  # mp.cpu_count()     # update this for matching server's resources
     else:
         num_worker = 9
     workers = [Agent(glob_AC, optim, shared_dict=shared_dict, lr_decay=config["LR_decay"], gamma=config["gamma"],
                      epsilon=config["epsilon"], epsilon_decay=config["epsilon_decay"],
                      MAX_EP=config["glob_episode_thred"], fixed_seed=fixed_seed, trial=trial,
-                     name_id=i, player=player_name, is_custom_env=is_custom_env) for i in range(num_worker)]
+                     name_id=i, player=player_name, is_custom_env=is_custom_env, miss_dur=miss_dur, target_size=target_size) for i in range(num_worker)]
 
     [w.start() for w in workers]
     [w.join() for w in workers]
@@ -150,12 +156,11 @@ def objective(trial, fixed_seed=True, on_server=True, is_defender=True, is_custo
     # ========= Save global model =========
     # run 'tensorboard --logdir=runs' in terminal to start TensorBoard.
     if on_server:
-        path = "/home/zelin/Drone/data/" + player_name
+        path = "/home/zelin/Drone/data/"+str(miss_dur)+"_"+str(target_size)+"/"+ player_name+"/"
     else:
-        path = "/Users/wanzelin/办公/gym-drones/data/" + player_name
-    os.makedirs(path + "/model", exist_ok=True)
-    torch.save(glob_AC.state_dict(),
-               path + "/model/trained_A3C_" + str(start_time) + "_" + player_name + "_Trial_" + trial_num_str)
+        path = "/Users/wanzelin/办公/gym-drones/data/"+str(miss_dur)+"_"+str(target_size)+"/"+player_name+"/"
+    os.makedirs(path + "model", exist_ok=True)
+    torch.save(glob_AC.state_dict(), path + "model/trained_A3C_" + str(start_time) + "_" + player_name + "_Trial_" + trial_num_str)
 
 
     # ========= Write Hparameter to Tensorboard =========
@@ -173,9 +178,9 @@ def objective(trial, fixed_seed=True, on_server=True, is_defender=True, is_custo
         else:
             temp_config[key] = value
     if on_server:
-        path = "/home/zelin/Drone/data/"
+        path = "/home/zelin/Drone/data/" +str(miss_dur)+"_"+str(target_size)+"/"
     else:
-        path = ""
+        path = "data/" +str(miss_dur)+"_"+str(target_size)+"/"
     writer_hparam = SummaryWriter(log_dir=path + "runs_" + player_name + "/each_run_" + str(start_time) + "-" + player_name +
                                   "-Trial_" + trial_num_str + "-hparm")
 
@@ -187,10 +192,16 @@ def objective(trial, fixed_seed=True, on_server=True, is_defender=True, is_custo
 
 
 if __name__ == '__main__':
-    test_mode = False       # True means use preset hyperparameter, and optuna will not be used.
+    test_mode = True       # True means use preset hyperparameter, and optuna will not be used.
     is_defender = True      # True means train a defender RL, False means train an attacker RL
     fixed_seed = True       # True means the seeds for pytorch, numpy, and python will be fixed.
     is_custom_env = True    # True means use the customized drone environment, False means use gym 'CartPole-v1'.
+
+    # sensitivity analysis value
+    miss_dur = 30 # default: 30
+    target_size = 5 # default: 5. The 'Number of Cell to Scan' = 'target_size' * 'target_size'
+
+    test_mode_run_time = 10
 
     if is_defender:
         player_name = 'def'
@@ -214,21 +225,22 @@ if __name__ == '__main__':
     # /home/zelin/Drone/data
     if test_mode:
         print("testing mode")
-        objective(None, fixed_seed=fixed_seed, on_server=on_server, is_defender=is_defender, is_custom_env=is_custom_env)
+        for _ in range(test_mode_run_time):
+            objective(None, fixed_seed=fixed_seed, on_server=on_server, is_defender=is_defender, is_custom_env=is_custom_env, miss_dur=miss_dur, target_size=target_size)
     else:
         print("training mode")
         if on_server:
-            db_path = "/home/zelin/Drone/data/"+player_name+"/"
+            db_path = "/home/zelin/Drone/data/"+str(miss_dur)+"_"+str(target_size)+"/"+player_name+"/"
             os.makedirs(db_path, exist_ok=True)
             study = optuna.create_study(direction='maximize', study_name="A3C-hyperparameter-study",
                                         storage="sqlite://///"+db_path+"HyperPara_database.db",
                                         load_if_exists=True)
         else:
-            db_path = "/Users/wanzelin/办公/gym-drones/data/"+player_name+"/"
+            db_path = "/Users/wanzelin/办公/gym-drones/data/"+str(miss_dur)+"_"+str(target_size)+"/"+player_name+"/"
             os.makedirs(db_path, exist_ok=True)
             study = optuna.create_study(direction='maximize', study_name="A3C-hyperparameter-study",
                                         storage="sqlite:////"+db_path+"HyperPara_database.db",
                                         load_if_exists=True)
-        study.optimize(lambda trial: objective(trial, fixed_seed, on_server, is_defender, is_custom_env), n_trials=100)
+        study.optimize(lambda trial: objective(trial, fixed_seed, on_server, is_defender, is_custom_env, miss_dur, target_size), n_trials=100)
 
 

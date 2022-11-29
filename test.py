@@ -1,54 +1,44 @@
-import torch
-import torch.multiprocessing as mp
-import torch.nn as nn
-#
-# class Agent(mp.Process):
-#     def __init__(self):
-#         super(Agent, self).__init__()
-#         self.model = torch.nn.Sequential(torch.nn.Linear(3, 2))
-#
-#     def run(self):
-#         temp_tensor = torch.tensor([[1., 2., 3.], [1., 2., 3.]])
-#         print(self.model(temp_tensor))
-#
-# num_worker = 1
-# workers = [Agent() for i in range(num_worker)]
-#
-# [w.start() for w in workers]
-# [w.join() for w in workers]
-
-
-class Agent(nn.Module):
-    def __init__(self):
-        super(Agent, self).__init__()
-        self.net = torch.nn.Sequential(torch.nn.Linear(3, 2))
-        print("init")
-        # self.run()
-
-    def run(self):
-        temp_tensor = torch.tensor([[1., 2., 3.], [1., 2., 3.]])
-        print("here")
-        print(self.net(temp_tensor))
-
-    # def forward(self):
-    #     out = self.net(torch.tensor([[1., 2., 3.], [1., 2., 3.]]))
-    #     return out
-
-def help_func():
-    model = Agent()
-    model.run()
-
-
-if __name__ == '__main__':
-    num_processes = 4
-    # NOTE: this is required for the ``fork`` method to work
-    processes = []
-    for rank in range(num_processes):
-        p = mp.Process(target=help_func, args=())
-        p.start()
-        processes.append(p)
-    for p in processes:
-        p.join()
+# import pandas as pd
+# from matplotlib import pyplot as plt
+from scipy import stats
+import numpy as np
+from os import listdir
+import tensorflow as tf
+import glob
+from tensorflow.python.summary.summary_iterator import summary_iterator
 
 
 
+print(tf. __version__)
+
+def get_average_value(setting_folder, scheme_name, trial_id, tag_name, print_log=False):
+    path_list = glob.glob('data/'+setting_folder+'/runs_'+scheme_name+'/*--Trial_'+str(trial_id)+'-eps')
+    path = path_list[0] + '/'   # this should only have one result
+    file_name = listdir(path)[0]        # only one file in the directory
+    if print_log:
+        print(path + file_name)
+    value_set = []
+    for summary_set in tf.compat.v1.train.summary_iterator(path + file_name):
+        for value in summary_set.summary.value:
+            if value.tag == tag_name:
+                value_set.append(value.simple_value)
+                if print_log:
+                    print("step", summary_set.step, tag_name+" value", value.simple_value)
+
+
+    ave_value = sum(value_set)/len(value_set) if len(value_set) else 0
+    if print_log:
+        print("average", ave_value)
+    return ave_value
+
+
+
+setting_folder = '30_5'
+scheme_name = 'def'
+trial_id = 98
+tag_name = "Energy Consumption"
+print('30_5:', get_average_value('30_5', scheme_name, trial_id, tag_name))
+print('35_5:', get_average_value('35_5', scheme_name, trial_id, tag_name))
+print('40_5:', get_average_value('40_5', scheme_name, trial_id, tag_name))
+print('45_5:', get_average_value('45_5', scheme_name, trial_id, tag_name))
+print('50_5:', get_average_value('50_5', scheme_name, trial_id, tag_name))

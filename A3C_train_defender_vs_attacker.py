@@ -95,7 +95,7 @@ def att_def_interaction(defender_model=None, attacker_model=None, is_random_sche
             if not is_random_scheme:
                 # train defender model
                 # after collect 5 memory, train the model,and clear memory.
-                defender_model.remember(observation_new_def, action_def, reward_def)    # TODO: check whether observation_def or observation_new_def should be saved to memory.
+                defender_model.remember(observation_new_def, action_def, reward_def)
                 if step_counter % 5 == 0 or done:
                     loss = defender_model.calc_loss(done)
                     loss_def.append(loss.item())

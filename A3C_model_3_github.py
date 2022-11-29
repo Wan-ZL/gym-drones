@@ -3,10 +3,12 @@ Project     ：gym-drones
 File        ：A3C_model_3_github.py
 Author      ：Zelin Wan
 Date        ：10/10/22
-Description : 
+Description : Train attacker/defender DRL model individually. If one selected, another one would be random action.
 '''
 
 import os
+import threading
+
 os.environ["OMP_NUM_THREADS"] = "1" # Error #34: System unable to allocate necessary resources for OMP thread:"
 import torch
 import torch.nn as nn
@@ -133,7 +135,7 @@ class ActorCritic(nn.Module):
 
 
 class Agent(mp.Process):
-    def __init__(self, gnet, opt, shared_dict, lr_decay, gamma, epsilon, epsilon_decay, MAX_EP, fixed_seed, trial, name_id: int, player='def', is_custom_env=True):
+    def __init__(self, gnet, opt, shared_dict, lr_decay, gamma, epsilon, epsilon_decay, MAX_EP, fixed_seed, trial, name_id: int, player='def', is_custom_env=True, miss_dur=30, target_size=5):
         super(Agent, self).__init__()
         self.name_id = name_id
         self.name = 'w%02i' % name_id
@@ -144,10 +146,13 @@ class Agent(mp.Process):
         self.g_r_list = shared_dict['glob_r_list']
         self.lr_decay = lr_decay
         self.is_custom_env = is_custom_env
+        self.miss_dur = miss_dur
+        self.target_size = target_size
         if is_custom_env:
-            self.env = HyperGameSim(fixed_seed=fixed_seed)
+            self.env = HyperGameSim(fixed_seed=fixed_seed, miss_dur=miss_dur, target_size=target_size)
             self.N_S = self.env.observation_space[player].shape[0]
             self.N_A = self.env.action_space[player].n
+            # update setting for sensitivity analysis
         else:
             self.env = gym.make('CartPole-v1')
             self.N_S = self.env.observation_space.shape[0]
@@ -174,9 +179,9 @@ class Agent(mp.Process):
                 trial_num_str = "None"
 
             if self.shared_dict["on_server"]:
-                path = "/home/zelin/Drone/data/"
+                path = "/home/zelin/Drone/data/"+str(self.miss_dur)+"_"+str(self.target_size)+"/"
             else:
-                path = ""
+                path = "data/"+str(self.miss_dur)+"_"+str(self.target_size)+"/"
             writer = SummaryWriter(log_dir=path + "runs_" + self.player + "/each_run_" + self.shared_dict["start_time"] + "-" +
                                    self.player + "-" + "-Trial_" + trial_num_str + "-eps")
             # writer = None
@@ -187,11 +192,12 @@ class Agent(mp.Process):
 
         ep_counter = 0
         while self.g_ep.value < self.MAX_EP:
+            print("Number of active threads:", threading.active_count())
             with self.g_ep.get_lock():
                 temp_ep = self.g_ep.value
 
             if self.is_custom_env:
-                obs_out = self.env.reset()
+                obs_out = self.env.reset(miss_dur=self.miss_dur, target_size=self.target_size)
                 if self.player == "att":
                     obs = obs_out['att']
                 elif self.player == "def":
@@ -200,6 +206,7 @@ class Agent(mp.Process):
                     raise Exception("invalide 'player_name'")
             else:
                 obs = self.env.reset()
+
 
             buffer_s, buffer_a, buffer_r = [], [], []
             total_loss_set = []
@@ -330,8 +337,7 @@ class Agent(mp.Process):
                     self.g_r_list.append(score_att)
                 else:
                     self.g_r_list.append(score_def)
-                # self.shared_dict["score_writer"].put(score)
-                # self.shared_dict["oppo_score_writer"].put(oppo_score)
+
                 self.shared_dict["score_def_writer"].put(score_def)
                 self.shared_dict["score_att_writer"].put(score_att)
                 self.shared_dict["score_def_avg_writer"].put(score_def_avg)
@@ -372,8 +378,6 @@ class Agent(mp.Process):
                     current_eps = self.shared_dict['eps_writer'].get()
                     current_eps = ep_counter
                     # write score
-                    # writer.add_scalar("Score", self.shared_dict["score_writer"].get(), current_eps)
-                    # writer.add_scalar("Opponent's Score", self.shared_dict["oppo_score_writer"].get(), current_eps)
                     writer.add_scalar("Accumulated Reward Defender", self.shared_dict["score_def_writer"].get(),
                                       current_eps)
                     writer.add_scalar("Accumulated Reward Attacker", self.shared_dict["score_att_writer"].get(),
@@ -409,8 +413,8 @@ class Agent(mp.Process):
                         # write attack success rate
                         writer.add_scalar("Attack Success Rate", self.shared_dict['att_succ_rate_writer'].get(),
                                           current_eps)
-                        # write mission success rate
-                        writer.add_scalar("Mission Success Rate (completion rate)", self.shared_dict['scan_percent_writer'].get(), current_eps)
+                        # write Ratio of Mission Completion
+                        writer.add_scalar("Ratio of Mission Completion", self.shared_dict['scan_percent_writer'].get(), current_eps)
                         # # write missin result
                         # writer.add_scalar("Mission condition (1 success, 0 failure)", self.shared_dict['mission_condition_writer'].get(), current_eps)
                         # write energy cunsumption for all drone (added them together)
@@ -430,6 +434,7 @@ class Agent(mp.Process):
                                           self.shared_dict['def_reward_2_writer'].get(), current_eps)
                         # write other metrics
                         writer.add_scalar("Max Mission Duration", self.env.system.mission_duration_max, current_eps)
+                        writer.add_scalar("Number of Cell to Scan", self.env.system.map_cell_number * self.env.system.map_cell_number, current_eps)
                         writer.add_scalar("Average Active MD+HD Number", self.shared_dict['MDHD_active_num_writer'].get(), current_eps)
                         writer.add_scalar("Average Connect_RLD MD+HD Number", self.shared_dict['MDHD_connect_RLD_num_writer'].get(), current_eps)
                         writer.add_scalar("Average Mission Complete Rate", self.shared_dict['mission_complete_rate_writer'].get(), current_eps)
