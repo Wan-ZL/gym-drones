@@ -3,7 +3,7 @@ Functions that use multiple times
 """
 
 import os
-os.environ["OMP_NUM_THREADS"] = "1" # Error #34: System unable to allocate necessary resources for OMP thread:"
+# os.environ["OMP_NUM_THREADS"] = "1" # Error #34: System unable to allocate necessary resources for OMP thread:"
 import torch
 import numpy as np
 

@@ -74,6 +74,7 @@ class HyperGameSim(Env):
         self.start_time = None
         self.initDroneEnv(miss_dur, target_size)
         self.close_env()  # close client in init for avoiding client limit error
+
         # variable for current env
         self.fixed_seed = fixed_seed
         self.miss_dur = miss_dur
@@ -104,7 +105,6 @@ class HyperGameSim(Env):
             if p.getConnectionInfo(self.env.getPyBulletClient())['isConnected']:
                 # print("closing client", self.env.getPyBulletClient())
                 self.env.close()
-                self.env = None
 
     def reset(self, *args, miss_dur=30, target_size=5):
         '''
@@ -117,12 +117,7 @@ class HyperGameSim(Env):
 
         '''
         self.start_time = time.time()
-
-        # TODO: This will cause "cannot create new thread error".
         self.initDroneEnv(miss_dur, target_size)
-        return 1
-
-
         # self.system.mission_duration_max = miss_dur
         # self.system.map_cell_number = target_size
 
@@ -156,11 +151,10 @@ class HyperGameSim(Env):
 
     def initDroneEnv(self, miss_dur=30, target_size=5):
         # create model class
-
         self.system = system_model(mission_duration_max=miss_dur, map_cell_number=target_size)
         self.defender = defender_model(self.system)
         self.attacker = attacker_model(self.system)
-        return
+
         if self.print: print("attacker locaiton", self.attacker.xyz)
 
 
@@ -211,12 +205,8 @@ class HyperGameSim(Env):
         INIT_RPYS = np.array([[0, 0, i * (np.pi / 2) / self.ARGS.num_drones] for i in range(self.ARGS.num_drones)])
         AGGR_PHY_STEPS = int(self.ARGS.simulation_freq_hz / self.ARGS.control_freq_hz) if self.ARGS.aggregate else 1
 
-
-        # disconnect exist physics client, and create a new clident
-
-        self.close_env()  # close previous client
         # gym-like environment
-
+        self.close_env()  # close previous client
         self.env = CtrlAviary(drone_model=self.ARGS.drone,
                               num_drones=self.ARGS.num_drones,
                               initial_xyzs=INIT_XYZS,
@@ -257,7 +247,7 @@ class HyperGameSim(Env):
             RLD.assign_destination((INIT_XYZS[RLD.ID]))
             RLD.xyz_temp = RLD.xyz
 
-
+        # disconnect exist physics client, and create a new clident
         p.loadURDF("duck_vhacd.urdf", self.attacker.xyz, physicsClientId=PYB_CLIENT)
 
         self.update_freq = self.system.update_freq
@@ -275,10 +265,12 @@ class HyperGameSim(Env):
         '''
 
         if action_def is None:
-            action_def = np.random.randint(0, 9)
+            action_def = np.random.randint(0, 9, dtype=np.int64)
+            # print("defender random!!!")
             # action_def = 4 # 5
         if action_att is None:
-            action_att = np.random.randint(0, 9)
+            action_att = np.random.randint(0, 9, dtype=np.int64)
+            # print("attacker random!!!")
             # action_att = 4 # 5
         # print("action_def", action_def, "action_att", action_att)
 

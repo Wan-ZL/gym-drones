@@ -212,7 +212,7 @@ class MultiAgent(mp.Process):
 
         ep_counter = 0
         while self.g_ep.value < self.MAX_EP:
-            print("Number of active threads:", threading.active_count())
+            # print("Number of active threads:", threading.active_count())
             with self.g_ep.get_lock():
                 temp_ep = self.g_ep.value
 
@@ -436,12 +436,10 @@ class MultiAgent(mp.Process):
                     writer.add_scalar("Mission Time (step)", total_step, current_eps)
                     # write loss
                     writer.add_scalar("Defender's Total Loss", self.shared_dict['t_loss_def_writer'].get(), current_eps)
-                    writer.add_scalar("Defender's Critic Loss", self.shared_dict['c_loss_def_writer'].get(),
-                                      current_eps)
+                    writer.add_scalar("Defender's Critic Loss", self.shared_dict['c_loss_def_writer'].get(), current_eps)
                     writer.add_scalar("Defender's Actor Loss", self.shared_dict['a_loss_def_writer'].get(), current_eps)
                     writer.add_scalar("Attacker's Total Loss", self.shared_dict['t_loss_att_writer'].get(), current_eps)
-                    writer.add_scalar("Attacker's Critic Loss", self.shared_dict['c_loss_att_writer'].get(),
-                                      current_eps)
+                    writer.add_scalar("Attacker's Critic Loss", self.shared_dict['c_loss_att_writer'].get(), current_eps)
                     writer.add_scalar("Attacker's Actor Loss", self.shared_dict['a_loss_att_writer'].get(), current_eps)
                     # write strategy counter
                     def_stra_counter = self.shared_dict['def_stra_count_writer'].get()
@@ -509,4 +507,3 @@ class MultiAgent(mp.Process):
             writer.flush()
             writer.close()  # close SummaryWriter of TensorBoard
         return
-

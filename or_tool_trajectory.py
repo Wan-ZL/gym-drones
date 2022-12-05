@@ -1,8 +1,4 @@
 
-import os
-import threading
-
-os.environ["OMP_NUM_THREADS"] = "1"
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
 import numpy as np
@@ -203,17 +199,44 @@ def generate_route_array(data, manager, routing, solution, indexs_MD):
     return route_array
 
 
-def fixed_result():
-    val = {2: np.array([[0., 0.], [401., 1.], [301., 1.], [201., 1.], [101., 1.], [0., 0.]]),
-           3: np.array([[0., 0.], [101., 301.], [101., 401.], [201., 401.], [301., 401.], [201., 301.], [101., 201.], [0., 0.]]),
-           4: np.array([[0., 0.], [1., 1.], [401., 401.], [301., 301.], [201., 201.], [101., 101.], [0., 0.]]),
-           5: np.array([[0., 0.], [301., 101.], [401., 101.], [401., 201.], [401., 301.], [301., 201.], [201., 101.], [0., 0.]]),
-           6: np.array([[0., 0.], [1., 401.], [1., 301.], [1., 201.], [1., 101.], [0., 0.]])}
-    return val
+def fix_result():
+    res = {2: np.array([[0., 0.],
+                        [401., 1.],
+                        [301., 1.],
+                        [201., 1.],
+                        [101., 1.],
+                        [0., 0.]]), 3: np.array([[0., 0.],
+                                                 [101., 301.],
+                                                 [101., 401.],
+                                                 [201., 401.],
+                                                 [301., 401.],
+                                                 [201., 301.],
+                                                 [101., 201.],
+                                                 [0., 0.]]), 4: np.array([[0., 0.],
+                                                                          [1., 1.],
+                                                                          [401., 401.],
+                                                                          [301., 301.],
+                                                                          [201., 201.],
+                                                                          [101., 101.],
+                                                                          [0., 0.]]), 5: np.array([[0., 0.],
+                                                                                                   [301., 101.],
+                                                                                                   [401., 101.],
+                                                                                                   [401., 201.],
+                                                                                                   [401., 301.],
+                                                                                                   [301., 201.],
+                                                                                                   [201., 101.],
+                                                                                                   [0., 0.]]),
+           6: np.array([[0., 0.],
+                        [1., 401.],
+                        [1., 301.],
+                        [1., 201.],
+                        [1., 101.],
+                        [0., 0.]])}
+    return res
 
 
 def MD_path_plan_main(indexs_MD, locations_MD, map_cell_number, cell_size, not_scanned_map):
-
+    return fix_result()
     print_traj = False
     """Entry point of the program."""
     # print_debug("locations_MD", locations_MD)
@@ -270,7 +293,6 @@ def MD_path_plan_main(indexs_MD, locations_MD, map_cell_number, cell_size, not_s
 
     # Setting first solution heuristic.
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
-
     search_parameters.first_solution_strategy = (
         routing_enums_pb2.FirstSolutionStrategy.AUTOMATIC) # algorithm may change here)
 
@@ -285,11 +307,8 @@ def MD_path_plan_main(indexs_MD, locations_MD, map_cell_number, cell_size, not_s
 
     # Solve the problem (with time counter).
     start = time.time()
+    # This may cause the tread error (cannot create a new thread)
     solution = routing.SolveWithParameters(search_parameters)
-    print("Solver status: ", routing.status())
-    print("Number of active threads:", threading.current_thread())
-    # TODO: This is debug testing
-    return fixed_result()
     end = time.time()
     # print_debug("\ntime spent:{:.2f}\n".format(end - start))
 

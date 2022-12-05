@@ -367,6 +367,12 @@ if __name__ == '__main__':
     scheme_name = "att"
     all_path_list = all_none_trial_finder(vary_set, scheme_name)
     all_scheme_path_set['rl-rand'] = all_path_list
+    scheme_name = "DefAtt"
+    all_path_list = all_none_trial_finder(vary_set, scheme_name)
+    all_scheme_path_set['rl-rl'] = all_path_list
+    scheme_name = "random"
+    all_path_list = all_none_trial_finder(vary_set, scheme_name)
+    all_scheme_path_set['rand-rand'] = all_path_list
 
     draw_all_scheme_sens_analysis(vary_set, all_scheme_path_set, "Ratio of Mission Completion")
     draw_all_scheme_sens_analysis(vary_set, all_scheme_path_set, "Energy Consumption")

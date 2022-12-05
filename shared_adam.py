@@ -3,7 +3,7 @@ Shared optimizer, the parameters in the optimizer will shared in the multiproces
 """
 
 import os
-os.environ["OMP_NUM_THREADS"] = "1" # Error #34: System unable to allocate necessary resources for OMP thread:"
+# os.environ["OMP_NUM_THREADS"] = "1" # Error #34: System unable to allocate necessary resources for OMP thread:"
 import torch
 
 

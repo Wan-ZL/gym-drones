@@ -16,7 +16,7 @@ import random
 import time
 
 from shared_adam import SharedAdam
-from A3C_model_4_v2 import *
+from A3C_model_4 import *
 from sys import platform
 from multiprocessing import Manager
 from utils import get_last_ten_ave
@@ -43,7 +43,7 @@ def objective(trial, fixed_seed=True, on_server=True, exist_model=False, is_defe
     # gamma: used to discount future reward, lr: learning rate, LR_decay: learning rate decay,
     # epsilon: probability of doing random action, epsilon_decay: epsilon decay,
     # pi_net_struc: structure of policy network, v_net_struct: structure of value network.
-    config = dict(glob_episode_thred=300, min_episode=1000, gamma=0.913763771439141, lr=0.00135463670164839, LR_decay=0.97127344458321, epsilon=0.0119790647086112,
+    config = dict(glob_episode_thred=5000, min_episode=1000, gamma=0.913763771439141, lr=0.00135463670164839, LR_decay=0.97127344458321, epsilon=0.0119790647086112,
                   epsilon_decay=0.970168515121627, pi_net_struc=[64, 128, 128, 64], v_net_struct=[64, 128, 128, 64])
 
     # Suggest values of the hyperparameters using a trial object.
@@ -159,9 +159,9 @@ def objective(trial, fixed_seed=True, on_server=True, exist_model=False, is_defe
 
     # parallel training
     if on_server:
-        num_worker = 40  # mp.cpu_count()     # update this for matching server's resources
+        num_worker = 120  # mp.cpu_count()     # update this for matching server's resources
     else:
-        num_worker = 15
+        num_worker = 10
     # workers = [Agent(glob_AC_def, optim_def, shared_dict=shared_dict, lr_decay=config["LR_decay"], gamma=config["gamma"],
     #                  epsilon=config["epsilon"], epsilon_decay=config["epsilon_decay"],
     #                  MAX_EP=config["glob_episode_thred"], fixed_seed=fixed_seed, trial=trial,
@@ -234,45 +234,47 @@ if __name__ == '__main__':
     is_custom_env = True    # True means use the customized drone environment, False means use gym 'CartPole-v1'.
 
     # sensitivity analysis value
-    miss_dur = 30  # default: 30
-    target_size = 5  # default: 5
-    
-    if is_defender:
-        player_name = 'def'
-        print("running for defender")
-    else:
-        player_name = 'att'
-        print("running for attacker")
+    miss_dur_set = [40, 45, 50]
+    for miss_dur in miss_dur_set:
+        # miss_dur = 35  # default: 30
+        target_size = 5  # default: 5
 
-    if fixed_seed:
-        # torch.manual_seed(0)
-        np.random.seed(0)
-        random.seed(0)
-    
-    if platform == "darwin":
-        on_server = False
-    else:
-        on_server = True
-    # objective(None)
-    # 3. Create a study object and optimize the objective function.
-    # /home/zelin/Drone/data
-    if test_mode:
-        print("testing mode")
-        objective(None, fixed_seed=fixed_seed, on_server=on_server, exist_model=exist_model, is_defender=is_defender, is_custom_env=is_custom_env, miss_dur=miss_dur, target_size=target_size)
-    else:
-        print("training mode")
-        if on_server:
-            db_path = "/home/zelin/Drone/data/"+str(miss_dur)+"_"+str(target_size)+"/DefAtt/"
-            os.makedirs(db_path, exist_ok=True)
-            study = optuna.create_study(direction='maximize', study_name="A3C-hyperparameter-study",
-                                        storage="sqlite://///"+db_path+"HyperPara_database.db",
-                                        load_if_exists=True)
+        if is_defender:
+            player_name = 'def'
+            print("running for defender")
         else:
-            db_path = "/Users/wanzelin/办公/gym-drones/data/"+str(miss_dur)+"_"+str(target_size)+"/DefAtt/"
-            os.makedirs(db_path, exist_ok=True)
-            study = optuna.create_study(direction='maximize', study_name="A3C-hyperparameter-study",
-                                        storage="sqlite:////"+db_path+"HyperPara_database.db",
-                                        load_if_exists=True)
-        study.optimize(lambda trial: objective(trial, fixed_seed, on_server, exist_model, is_defender, is_custom_env, miss_dur, target_size), n_trials=100)
+            player_name = 'att'
+            print("running for attacker")
+
+        if fixed_seed:
+            # torch.manual_seed(0)
+            np.random.seed(0)
+            random.seed(0)
+
+        if platform == "darwin":
+            on_server = False
+        else:
+            on_server = True
+        # objective(None)
+        # 3. Create a study object and optimize the objective function.
+        # /home/zelin/Drone/data
+        if test_mode:
+            print("testing mode")
+            objective(None, fixed_seed=fixed_seed, on_server=on_server, exist_model=exist_model, is_defender=is_defender, is_custom_env=is_custom_env, miss_dur=miss_dur, target_size=target_size)
+        else:
+            print("training mode")
+            if on_server:
+                db_path = "/home/zelin/Drone/data/"+str(miss_dur)+"_"+str(target_size)+"/DefAtt/"
+                os.makedirs(db_path, exist_ok=True)
+                study = optuna.create_study(direction='maximize', study_name="A3C-hyperparameter-study",
+                                            storage="sqlite://///"+db_path+"HyperPara_database.db",
+                                            load_if_exists=True)
+            else:
+                db_path = "/Users/wanzelin/办公/gym-drones/data/"+str(miss_dur)+"_"+str(target_size)+"/DefAtt/"
+                os.makedirs(db_path, exist_ok=True)
+                study = optuna.create_study(direction='maximize', study_name="A3C-hyperparameter-study",
+                                            storage="sqlite:////"+db_path+"HyperPara_database.db",
+                                            load_if_exists=True)
+            study.optimize(lambda trial: objective(trial, fixed_seed, on_server, exist_model, is_defender, is_custom_env, miss_dur, target_size), n_trials=100)
 
 
