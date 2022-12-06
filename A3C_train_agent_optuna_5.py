@@ -7,7 +7,8 @@ Description :
 '''
 
 import os
-os.environ["OMP_NUM_THREADS"] = "1" # Error #34: System unable to allocate necessary resources for OMP thread:"
+
+os.environ["OMP_NUM_THREADS"] = "1"  # Error #34: System unable to allocate necessary resources for OMP thread:"
 import torch.multiprocessing as mp
 import numpy as np
 import optuna
@@ -59,8 +60,7 @@ def objective(trial, fixed_seed=True, on_server=True, exist_model=False, exp_sch
             # trial for defender
             config_def["gamma"] = trial.suggest_loguniform('gamma', 0.9, 0.99)
             config_def["lr"] = trial.suggest_loguniform('lr', 0.001, 0.01)
-            config_def["LR_decay"] = trial.suggest_loguniform('LR_decay', 0.9,
-                                                              0.99)  # since scheduler is not use. This one has no impact to reward
+            config_def["LR_decay"] = trial.suggest_loguniform('LR_decay', 0.9, 0.99)
             config_def["epsilon"] = trial.suggest_loguniform('epsilon', 0.01, 0.5)
             config_def["epsilon_decay"] = trial.suggest_loguniform('epsilon_decay', 0.9, 0.99)
 
@@ -68,8 +68,7 @@ def objective(trial, fixed_seed=True, on_server=True, exist_model=False, exp_sch
             # trial for attacker
             config_att["gamma"] = trial.suggest_loguniform('gamma', 0.9, 0.99)
             config_att["lr"] = trial.suggest_loguniform('lr', 0.001, 0.01)
-            config_att["LR_decay"] = trial.suggest_loguniform('LR_decay', 0.9,
-                                                              0.99)  # since scheduler is not use. This one has no impact to reward
+            config_att["LR_decay"] = trial.suggest_loguniform('LR_decay', 0.9, 0.99)
             config_att["epsilon"] = trial.suggest_loguniform('epsilon', 0.01, 0.5)
             config_att["epsilon_decay"] = trial.suggest_loguniform('epsilon_decay', 0.9, 0.99)
 
@@ -174,7 +173,8 @@ def objective(trial, fixed_seed=True, on_server=True, exist_model=False, exp_sch
 
     # parallel training
     if on_server:
-        num_worker = 75  # mp.cpu_count()     # update this for matching server's resources
+        num_worker = 75  # mp.cpu_count()       # update this for matching server's resources (ARC can hold up to 75
+        # workers if allocate 128 CPUs)
     else:
         num_worker = 10
     # workers = [Agent(glob_AC_def, optim_def, shared_dict=shared_dict, lr_decay=config_def["LR_decay"], gamma=config_def["gamma"],
@@ -238,7 +238,7 @@ def objective(trial, fixed_seed=True, on_server=True, exist_model=False, exp_sch
 if __name__ == '__main__':
     test_mode = True  # True means use preset hyperparameter, and optuna will not be used.
     exist_model = False  # True means use the existing pre-trained models. False means train new models.
-    exp_scheme = 2  # 0 means A-random D-a3c, 1 means A-a3c D-random, 2 means A-a3c D-a3c, 3 means A-random D-random
+    exp_scheme = 0  # 0 means A-random D-a3c, 1 means A-a3c D-random, 2 means A-a3c D-a3c, 3 means A-random D-random
     # is_defender = True      # True means train a defender RL, False means train an attacker RL
     fixed_seed = True  # True means the seeds for pytorch, numpy, and python will be fixed.
     is_custom_env = True  # True means use the customized drone environment, False means use gym 'CartPole-v1'.
@@ -247,7 +247,7 @@ if __name__ == '__main__':
     miss_dur = 30  # default: 30
     target_size = 5  # default: 5. The 'Number of Cell to Scan' = 'target_size' * 'target_size'
 
-    test_mode_run_time = 2
+    test_mode_run_time = 10
 
     if exp_scheme == 0:
         player_name = 'def'

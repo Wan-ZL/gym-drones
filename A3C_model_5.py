@@ -192,8 +192,8 @@ class Agent(mp.Process):
 
         self.gamma_def = config_def["gamma"]
         self.gamma_att = config_att["gamma"]
-        self.MAX_EP = config_def[
-            "glob_episode_thred"]  # defender and attacker should have the same 'glob_episode_thred', so I didn't make them different here
+        self.MAX_EP = config_def["glob_episode_thred"]  # defender and attacker should have the same
+        # 'glob_episode_thred', so I didn't make them different here
         self.trial = trial
         self.player = player
         self.scheduler_def = LambdaLR(self.opt_def, lr_lambda=self.lambda_function_def)
