@@ -5,7 +5,7 @@ from model_RLD import RLD_Drone
 
 
 class system_model:
-    def __init__(self, mission_duration_max=30, map_cell_number=5):
+    def __init__(self, mission_duration_max=30, map_cell_number=5, num_HD=2):
         self.print = False
         self.update_freq = 500  # environment frame per round
         self.mission_Not_end = 2  # 2 means True, use 2 here to allow drone back to BaseStation in debug mode
@@ -24,8 +24,8 @@ class system_model:
         self.scan_cell_map = self.scan_map[::self.cell_size, ::self.cell_size]
         self.min_scan_requirement = 5
         self.recalc_trajectory = False  # True: need recalculate trajectory.
-        self.num_MD = 5 # 10  # number of MD (in index, MD first then HD)
-        self.num_HD = 2 # 5  # number of HD
+        self.num_MD = 5 # number of MD (in index, MD first then HD)
+        self.num_HD = num_HD # 2 # number of HD
         self.MD_dict = {}  # key is id, value is class detail
         self.HD_dict = {}
         self.Drone_dict = {}

@@ -1,8 +1,8 @@
 #!/bin/bash
 
-#SBATCH --nodes=1 --ntasks-per-node=1 --cpus-per-task=128
-#SBATCH -t 00-00:10:00
-#SBATCH -p dev_q
+#SBATCH --nodes=1 --ntasks-per-node=1 --cpus-per-task=76
+#SBATCH -t 06-00:00:00
+#SBATCH -p normal_q
 #SBATCH --account=zelin1
 #SBATCH --export=NONE # this makes sure the compute environment is clean
 

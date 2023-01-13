@@ -135,7 +135,7 @@ class ActorCritic(nn.Module):
 class Agent(mp.Process):
     def __init__(self, gnet_def, gnet_att, opt_def, opt_att, shared_dict, config_def, config_att, fixed_seed, trial,
                  name_id: int, exp_scheme=0, player='def', exist_model=False, is_custom_env=True, miss_dur=30,
-                 target_size=5):
+                 target_size=5, max_att_budget=5, num_HD=2):
         super(Agent, self).__init__()
         self.name_id = name_id
         self.name = 'w%02i' % name_id
@@ -153,8 +153,12 @@ class Agent(mp.Process):
         self.is_custom_env = is_custom_env
         self.miss_dur = miss_dur
         self.target_size = target_size
+        self.max_att_budget = max_att_budget
+
+        self.num_HD = num_HD
         if is_custom_env:
-            self.env = HyperGameSim(fixed_seed=fixed_seed, miss_dur=miss_dur, target_size=target_size)
+            self.env = HyperGameSim(fixed_seed=fixed_seed, miss_dur=miss_dur, target_size=target_size,
+                                    max_att_budget=max_att_budget, num_HD=num_HD)
             self.input_dims_def = self.env.observation_space['def'].shape[0]
             self.n_actions_def = self.env.action_space['def'].n
             self.input_dims_att = self.env.observation_space['att'].shape[0]
@@ -217,10 +221,11 @@ class Agent(mp.Process):
 
             if self.shared_dict["on_server"]:
                 # set path for server
-                path = "/home/zelin/Drone/data/" + str(self.miss_dur) + "_" + str(self.target_size) + "/"
+                path = "/home/zelin/Drone/data/" + str(self.miss_dur) + "_" + str(self.max_att_budget) + "_" + str(
+                    self.num_HD) + "/"
             else:
                 # set path for my laptop
-                path = "data/" + str(self.miss_dur) + "_" + str(self.target_size) + "/"
+                path = "data/" + str(self.miss_dur) + "_" + str(self.max_att_budget) + "_" + str(self.num_HD) + "/"
             writer = SummaryWriter(
                 log_dir=path + "runs_" + self.player + "/each_run_" + self.shared_dict["start_time"] + "-" +
                         self.player + "-" + "-Trial_" + trial_num_str + "-eps")
@@ -236,7 +241,8 @@ class Agent(mp.Process):
                 temp_ep = self.g_ep.value
 
             if self.is_custom_env:
-                obs_out = self.env.reset(miss_dur=self.miss_dur, target_size=self.target_size)
+                obs_out = self.env.reset(miss_dur=self.miss_dur, target_size=self.target_size,
+                                         max_att_budget=self.max_att_budget, num_HD=self.num_HD)
                 obs_def = obs_out['def']
                 obs_att = obs_out['att']
             else:
@@ -250,6 +256,8 @@ class Agent(mp.Process):
             total_loss_set_att = []
             c_loss_set_att = []
             a_loss_set_att = []
+            att_succ_counter_set = []
+            att_counter_set = []
             att_succ_rate_set = []
             MDHD_active_set = []
             MDHD_connect_RLD_set = []
@@ -306,6 +314,8 @@ class Agent(mp.Process):
 
                     # add data from each step (for custom env only)
                     # att_succ_rate_set.append(info['att_succ_rate'])
+                    att_succ_counter_set.append(info['att_succ_counter'])
+                    att_counter_set.append(info['att_counter'])
                     if info['att_counter']:  # this avoids dividing by zero
                         att_succ_rate_set.append(info['att_succ_counter'] / info['att_counter'])
                     att_reward_0 += info["att_reward_0"]
@@ -407,6 +417,15 @@ class Agent(mp.Process):
                 self.shared_dict['def_stra_count_writer'].put(def_stra_counter)
                 self.shared_dict['att_stra_count_writer'].put(att_stra_counter)
                 if self.is_custom_env:
+                    self.shared_dict['att_succ_counter_writer'].put(
+                        sum(att_succ_counter_set))  # the total number of success attack in one episode
+                    self.shared_dict['att_succ_counter_ave_writer'].put(
+                        sum(att_succ_counter_set) / len(att_succ_counter_set) if len(
+                            att_succ_counter_set) else 0)  # the average number of success attack in one step
+                    self.shared_dict['att_counter_writer'].put(
+                        sum(att_counter_set))  # the total number of attack behavior in one episode
+                    self.shared_dict['att_counter_ave_writer'].put(sum(att_counter_set) / len(att_counter_set) if len(
+                        att_counter_set) else 0)  # the average number of attack behavior in one step
                     self.shared_dict['att_succ_rate_writer'].put(
                         sum(att_succ_rate_set) / len(att_succ_rate_set) if len(att_succ_rate_set) else 0)
                     self.shared_dict['mission_condition_writer'].put(info["mission_condition"])
@@ -484,7 +503,14 @@ class Agent(mp.Process):
                         writer.add_scalar("Attacker Strategy (" + str(i) + ") Freq.", att_stra_counter[i], current_eps)
                     # write mission completion rate
                     if self.is_custom_env:
-                        # write attack success rate
+                        # write attack related data
+                        writer.add_scalar("Attack Success Counter", self.shared_dict['att_succ_counter_writer'].get(), current_eps)
+                        writer.add_scalar("Attack Success Counter (step averaged)", self.shared_dict['att_succ_counter_ave_writer'].get(),
+                                          current_eps)
+                        writer.add_scalar("Attack Launched Counter", self.shared_dict['att_counter_writer'].get(),
+                                          current_eps)
+                        writer.add_scalar("Attack Launched Counter (step averaged)", self.shared_dict['att_counter_ave_writer'].get(),
+                                          current_eps)
                         writer.add_scalar("Attack Success Rate", self.shared_dict['att_succ_rate_writer'].get(),
                                           current_eps)
                         # write Ratio of Mission Completion
@@ -521,6 +547,9 @@ class Agent(mp.Process):
                                           self.shared_dict['remaining_time_writer'].get(), current_eps)
                         writer.add_scalar("Average Energy HD", self.shared_dict['energy_HD_writer'].get(), current_eps)
                         writer.add_scalar("Average Energy MD", self.shared_dict['energy_MD_writer'].get(), current_eps)
+                        writer.add_scalar("Number of init MD", self.env.system.num_MD, current_eps)
+                        writer.add_scalar("Number of init HD", self.env.system.num_HD, current_eps)
+                        writer.add_scalar("Attacker's max_att_budget", self.env.attacker.max_att_budget, current_eps)
 
                     ep_counter += 1
 

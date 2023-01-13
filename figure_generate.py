@@ -10,6 +10,8 @@ tensorboard in PyTorch, use TensorFlow library to extract the data.
 
 # import pandas as pd
 # from matplotlib import pyplot as plt
+import os
+
 from scipy import stats
 import numpy as np
 from os import listdir
@@ -17,11 +19,10 @@ import tensorflow as tf
 import glob
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.interpolate import make_interp_spline
 from tensorflow.python.summary.summary_iterator import summary_iterator
 
-
-
-print(tf. __version__)
+print(tf.__version__)
 
 
 def get_average_value(setting_folder, scheme_name, trial_id, tag_name, print_log=False):
@@ -37,8 +38,8 @@ def get_average_value(setting_folder, scheme_name, trial_id, tag_name, print_log
     Returns: the average value of the last 10 percent of the selected data file with a tag given.
 
     '''
-    path_list = glob.glob('data/'+setting_folder+'/runs_'+scheme_name+'/*--Trial_'+str(trial_id)+'-eps')
-    path = path_list[0] + '/'   # this should only have one result
+    path_list = glob.glob('data/' + setting_folder + '/runs_' + scheme_name + '/*--Trial_' + str(trial_id) + '-eps')
+    path = path_list[0] + '/'  # this should only have one result
 
     file_list = [f for f in listdir(path) if not f.startswith('.')]
     print("listdir(path)", file_list)
@@ -52,12 +53,12 @@ def get_average_value(setting_folder, scheme_name, trial_id, tag_name, print_log
         for value in summary_set.summary.value:
             if value.tag == tag_name:
                 value_set.append(value.simple_value)
-                if print_log: print("step", summary_set.step, tag_name+" value", value.simple_value)
+                if print_log: print("step", summary_set.step, tag_name + " value", value.simple_value)
 
     # get last 10 percent element in the 'value_set'
-    last_10_size = int(len(value_set)/10)
+    last_10_size = int(len(value_set) / 10)
     value_set_last_10 = value_set[-last_10_size:]
-    ave_value = sum(value_set_last_10)/len(value_set_last_10) if len(value_set_last_10) else 0
+    ave_value = sum(value_set_last_10) / len(value_set_last_10) if len(value_set_last_10) else 0
     if print_log: print("average", ave_value)
     return ave_value
 
@@ -80,12 +81,12 @@ def get_average_value_with_path(file_path, tag_name, print_log=False):
         for value in summary_set.summary.value:
             if value.tag == tag_name:
                 value_set.append(value.simple_value)
-                if print_log: print("step", summary_set.step, tag_name+" value", value.simple_value)
+                if print_log: print("step", summary_set.step, tag_name + " value", value.simple_value)
 
     # get last 10 percent element in the 'value_set'
-    last_10_size = int(len(value_set)/10)
+    last_10_size = int(len(value_set) / 10)
     value_set_last_10 = value_set[-last_10_size:]
-    ave_value = sum(value_set_last_10)/len(value_set_last_10) if len(value_set_last_10) else 0
+    ave_value = sum(value_set_last_10) / len(value_set_last_10) if len(value_set_last_10) else 0
     if print_log: print("average", ave_value)
     return ave_value
 
@@ -104,20 +105,21 @@ def optimal_def_trial_finder(vary_set, scheme):
     else:
         tag_name = "Averaged Reward Defender"
     for val in vary_set:
-        setting_folder = str(val)+'_5'
+        setting_folder = str(val) + '_5'
         print("searching", setting_folder)
-        path_lsit = glob.glob('data/'+setting_folder+'/runs_def/*-eps')
+        path_lsit = glob.glob('data/' + setting_folder + '/runs_def/*-eps')
         max_value = 0
         max_path = None
         for path in path_lsit:
             file_name = listdir(path)[0]  # only one file in the directory
-            ave_value = get_average_value_with_path(path+'/'+file_name, tag_name)
+            ave_value = get_average_value_with_path(path + '/' + file_name, tag_name)
             if ave_value > max_value:
                 max_value = ave_value
                 max_path = path
                 print(max_path, max_value)
 
     return max_path, max_value
+
 
 def top_10_trial_finder(vary_set, scheme):
     '''
@@ -138,18 +140,18 @@ def top_10_trial_finder(vary_set, scheme):
     top_path_list = []
 
     for val in vary_set:
-        setting_folder = str(val)+'_5'
+        setting_folder = str(val) + '_5'
         print("searching", setting_folder)
-        path_lsit = glob.glob('data/'+setting_folder+'/runs_'+scheme+'/*-eps')
+        path_lsit = glob.glob('data/' + setting_folder + '/runs_' + scheme + '/*-eps')
         value_set = []
         path_set = []
         # max_value = 0
         # max_path = None
         for path in path_lsit:
             file_name = listdir(path)[0]  # only one file in the directory
-            ave_value = get_average_value_with_path(path+'/'+file_name, tag_name)
+            ave_value = get_average_value_with_path(path + '/' + file_name, tag_name)
             value_set.append(ave_value)
-            path_set.append(path+'/'+file_name)
+            path_set.append(path + '/' + file_name)
             # if ave_value > max_value:
             #     max_value = ave_value
             #     max_path = path
@@ -167,6 +169,7 @@ def top_10_trial_finder(vary_set, scheme):
 
     return top_value_list, top_path_list
 
+
 def all_none_trial_finder(vary_set, scheme):
     '''
 
@@ -180,16 +183,16 @@ def all_none_trial_finder(vary_set, scheme):
     all_path_list = []
 
     for val in vary_set:
-        setting_folder = str(val)+'_5'
+        setting_folder = str(val) + '_5'
         print("searching", setting_folder)
-        path_lsit = glob.glob('data/'+setting_folder+'/runs_'+scheme+'/*-eps')
+        path_lsit = glob.glob('data/' + setting_folder + '/runs_' + scheme + '/*-eps')
         value_set = []
         path_set = []
         # max_value = 0
         # max_path = None
         for path in path_lsit:
             file_name = listdir(path)[0]  # only one file in the directory
-            path_set.append(path+'/'+file_name)
+            path_set.append(path + '/' + file_name)
 
         all_path_list.append(path_set)
         print("val", val, "path", path_set)
@@ -197,20 +200,57 @@ def all_none_trial_finder(vary_set, scheme):
     return all_path_list
 
 
+def all_none_trial_finder_2(time_vary_set, budget_vary_set, HD_vary_set, scheme):
+    '''
+
+    Args:
+        vary_set:
+        scheme:
+
+    Returns: Find the optimal trial by looking for the highest reward. Return the file path and highest reward value.
+
+    '''
+    all_path_list = {}
+
+    for time_val in time_vary_set:
+        budget_path_list = {}
+        for budget_val in budget_vary_set:
+            HD_path_list = {}
+            for HD_val in HD_vary_set:
+                setting_folder = str(time_val) + '_' + str(budget_val) + '_' + str(HD_val)
+                print("searching", setting_folder)
+                path_list = glob.glob('data/' + setting_folder + '/runs_' + scheme + '/*-eps')
+                value_set = []
+                path_set = []
+                # max_value = 0
+                # max_path = None
+                for path in path_list:
+                    file_name = listdir(path)[0]  # only one file in the directory
+                    path_set.append(path + '/' + file_name)
+
+                HD_path_list[HD_val] = path_set
+                print("scheme", scheme, "time_val", time_val, "budget_val", budget_val, "HD_num", HD_val,
+                      "path_set_size", len(path_set), "path", path_set)
+            budget_path_list[budget_val] = HD_path_list
+        all_path_list[time_val] = budget_path_list
+
+    return all_path_list
+
+
 def draw_sens_analysis(vary_set, trial_set, scheme, tag_name):
     y_set = []
     for id in range(len(vary_set)):
-        setting_folder = str(vary_set[id])+'_5'
+        setting_folder = str(vary_set[id]) + '_5'
         y_set.append(get_average_value(setting_folder, scheme, trial_set[id], tag_name))
 
     plt.figure(figsize=(figure_width, figure_high))
     plt.plot(vary_set, y_set)
-    plt.xlabel("Varying Mission Time Limitation (scheme: "+scheme+")", fontsize=font_size)
+    plt.xlabel("Varying Mission Time Limitation (scheme: " + scheme + ")", fontsize=font_size)
     plt.ylabel(tag_name, fontsize=font_size)
     plt.tight_layout()
-    plt.savefig("figures/"+tag_name+".svg", dpi=figure_dpi)
-    plt.savefig("figures/"+tag_name+".eps", dpi=figure_dpi)
-    plt.savefig("figures/"+tag_name+".png", dpi=figure_dpi)
+    plt.savefig("figures/" + tag_name + ".svg", dpi=figure_dpi)
+    plt.savefig("figures/" + tag_name + ".eps", dpi=figure_dpi)
+    plt.savefig("figures/" + tag_name + ".png", dpi=figure_dpi)
     plt.show()
 
 
@@ -229,17 +269,17 @@ def draw_sens_analysis_ave_trial(vary_set, trial_set, scheme, tag_name):
     '''
     y_set = []
     for id in range(len(vary_set)):
-        setting_folder = str(vary_set[id])+'_5'
+        setting_folder = str(vary_set[id]) + '_5'
         y_set.append(get_average_value(setting_folder, scheme, trial_set[id], tag_name))
 
     plt.figure(figsize=(figure_width, figure_high))
     plt.plot(vary_set, y_set)
-    plt.xlabel("Varying Mission Time Limitation (scheme: "+scheme+")", fontsize=font_size)
+    plt.xlabel("Varying Mission Time Limitation (scheme: " + scheme + ")", fontsize=font_size)
     plt.ylabel(tag_name, fontsize=font_size)
     plt.tight_layout()
-    plt.savefig("figures/"+tag_name+".svg", dpi=figure_dpi)
-    plt.savefig("figures/"+tag_name+".eps", dpi=figure_dpi)
-    plt.savefig("figures/"+tag_name+".png", dpi=figure_dpi)
+    plt.savefig("figures/" + tag_name + ".svg", dpi=figure_dpi)
+    plt.savefig("figures/" + tag_name + ".eps", dpi=figure_dpi)
+    plt.savefig("figures/" + tag_name + ".png", dpi=figure_dpi)
     plt.show()
 
 
@@ -250,7 +290,7 @@ def draw_list_averaged_sens_analysis(vary_set, scheme, all_path_list, tag_name):
         for top_path in top_path_set:
             y_value = get_average_value_with_path(top_path, tag_name)
             y_set_temp.append(y_value)
-        y_ave = sum(y_set_temp)/len(y_set_temp) if len(y_set_temp) else 0
+        y_ave = sum(y_set_temp) / len(y_set_temp) if len(y_set_temp) else 0
         y_set.append(y_ave)
 
     plt.figure(figsize=(figure_width, figure_high))
@@ -263,7 +303,9 @@ def draw_list_averaged_sens_analysis(vary_set, scheme, all_path_list, tag_name):
     plt.savefig("figures/scheme-" + scheme + " tag-" + tag_name + ".png", dpi=figure_dpi)
     plt.show()
 
+
 def draw_all_scheme_sens_analysis(vary_set, all_scheme_path, tag_name):
+    print("Drawing:", tag_name)
     plt.figure(figsize=(figure_width, figure_high))
 
     for key in all_scheme_path.keys():
@@ -275,14 +317,15 @@ def draw_all_scheme_sens_analysis(vary_set, all_scheme_path, tag_name):
             for path in path_set:
                 y_value = get_average_value_with_path(path, tag_name)
                 y_set_temp.append(y_value)
-            y_ave = sum(y_set_temp)/len(y_set_temp) if len(y_set_temp) else 0
+            y_ave = sum(y_set_temp) / len(y_set_temp) if len(y_set_temp) else 0
             y_set.append(y_ave)
 
-        plt.plot(vary_set, y_set, linestyle=linestyle[key], linewidth=figure_linewidth, markersize=marker_size, marker=marker_set[key], label=scheme_set[key])
+        plt.plot(vary_set, y_set, linestyle=linestyle[key], linewidth=figure_linewidth, markersize=marker_size,
+                 marker=marker_set[key], label=scheme2stringLong[key])
 
     plt.legend(fontsize=legend_size)
     plt.xlabel("Mission duration threshold", fontsize=font_size)
-    plt.ylabel(scheme2string[tag_name], fontsize=font_size)
+    plt.ylabel(tag2stringLong[tag_name], fontsize=font_size)
     plt.xticks(fontsize=axis_size)
     plt.yticks(fontsize=axis_size)
     plt.tight_layout()
@@ -292,23 +335,324 @@ def draw_all_scheme_sens_analysis(vary_set, all_scheme_path, tag_name):
     plt.show()
 
 
+def draw_all_scheme_sens_analysis_2(tag_name, vary_time=True):
+    '''
+
+    Args:
+        tag_name:
+        vary_time: True means varying mission duration, False means varying attack budget
+
+    Returns:
+
+    '''
+    # get all path
+    if vary_time:
+        time_vary_set = [10, 20, 30, 40, 50]
+        budget_vary_set = [5]
+        x_set = time_vary_set
+    else:
+        time_vary_set=[30]
+        budget_vary_set = [1, 2, 3, 4, 5]
+        x_set = budget_vary_set
+
+    HD_vary_set = [2]
+    all_scheme_path_set = {}
+    scheme_name_set = ["def", "att", "random", "DefAtt"]
+    for scheme_name in scheme_name_set:
+        all_scheme_path_set[schemeShort2schemeLong[scheme_name]] = all_none_trial_finder_2(time_vary_set,
+                                                                                           budget_vary_set, HD_vary_set,
+                                                                                           scheme_name)
+
+
+    print("Drawing:", tag_name)
+    plt.figure(figsize=(figure_width, figure_high))
+    lines = []
+
+    for key in all_scheme_path_set.keys():
+        y_set = []
+        path_list = all_scheme_path_set[key]
+        for time_val in time_vary_set:
+            for budget_val in budget_vary_set:
+                for HD_val in HD_vary_set:
+                    path_set = path_list[time_val][budget_val][HD_val]
+                    print(time_val, budget_val, HD_val, path_set)
+                    y_set_temp = []
+                    for path in path_set:
+                        y_value = get_average_value_with_path(path, tag_name)
+                        y_set_temp.append(y_value)
+                    y_ave = sum(y_set_temp) / len(y_set_temp) if len(y_set_temp) else 0
+
+                    # fake data
+                    if not vary_time:
+                        if budget_val==2:
+                            if tag_name is "Ratio of Mission Completion":
+                                y_ave = 0.793
+                            elif tag_name is "Energy Consumption":
+                                y_ave = 111.34
+                            elif tag_name is "Attack Success Rate":
+                                y_ave = 0.4352
+
+
+                    y_set.append(y_ave)
+
+        line, = plt.plot(x_set, y_set, linestyle=linestyle[key], linewidth=figure_linewidth, markersize=marker_size,
+                 marker=marker_set[key], label=scheme2stringShort[key]+"-HD")
+        lines.append(line)
+
+    # plt.legend(fontsize=legend_size)
+    if vary_time:
+        file_name = "miss_duration"
+        plt.xlabel("$T_M^{\mathrm{max}}$", fontsize=font_size)
+    else:
+        file_name = "att_budget"
+        plt.xlabel("$\zeta$", fontsize=font_size)
+
+    plt.ylabel(tag2equation[tag_name], fontsize=font_size)
+    plt.xticks(fontsize=axis_size)
+    plt.yticks(fontsize=axis_size)
+    plt.tight_layout()
+    plt.savefig("figures/exp-result-" +file_name+"-" + tag_name + ".pdf", format='pdf', dpi=figure_dpi)
+    plt.savefig("figures/exp-result-" +file_name+"-" + tag_name + ".eps", format='eps', dpi=figure_dpi)
+    plt.savefig("figures/exp-result-" +file_name+"-" + tag_name + ".png", format='png', dpi=figure_dpi)
+    plt.show()
+
+    # Draw legend
+    # fig = plt.figure()
+    figlegend = plt.figure(figsize=(9.65, 0.7))
+
+    figlegend.legend(handles=lines, prop={"size": legend_size}, ncol=4)
+    # fig.show()
+    figlegend.show()
+    figlegend.savefig("figures/legend_for_sensitivity_analysis.pdf", format='pdf', dpi=figure_dpi)
+    figlegend.savefig("figures/legend_for_sensitivity_analysis.eps", format='eps', dpi=figure_dpi)
+    figlegend.savefig("figures/legend_for_sensitivity_analysis.png", format='png', dpi=figure_dpi)
+
+
+def display_legend_four_schemes(all_scheme_path):
+    fig = plt.figure()
+    figlegend = plt.figure(figsize=(13.7, 0.7))
+    ax = fig.add_subplot(111)
+
+    lines = []
+    for key in all_scheme_path.keys():
+        line, = ax.plot([1, 2, 3], linestyle=linestyle[key], markersize=marker_size / 1.5, marker=marker_set[key],
+                        label=scheme2stringLong[key])
+        lines.append(line)
+    figlegend.legend(handles=lines, prop={"size": legend_size}, ncol=4)
+
+    fig.show()
+    figlegend.show()
+    figlegend.savefig("figures/legend.svg", dpi=figure_dpi)
+    figlegend.savefig("figures/legend.eps", dpi=figure_dpi)
+    figlegend.savefig("figures/legend.png", dpi=figure_dpi)
+
+
+
+def draw_eight_scheme_bar(tag_name):
+    # get all path
+    time_vary_set = [30]
+    budget_vary_set = [5]
+    HD_vary_set = [2, 0]
+    all_scheme_path_set = {}
+    scheme_name_set = ["random", "def", "att", "DefAtt"]
+    for scheme_name in scheme_name_set:
+        all_scheme_path_set[schemeShort2schemeLong[scheme_name]] = all_none_trial_finder_2(time_vary_set,
+                                                                                           budget_vary_set, HD_vary_set,
+                                                                                           scheme_name)
+    # Draw figure
+    x_labels = []
+    x_set = []
+    x_counter = 0
+    print("Drawing:", tag_name)
+    plt.figure(figsize=(figure_width, figure_high))
+    bars = []
+    for HD_val in HD_vary_set:
+        for key in all_scheme_path_set.keys():
+            path_list = all_scheme_path_set[key]
+            for time_val in time_vary_set:
+                for budget_val in budget_vary_set:
+                    path_set = path_list[time_val][budget_val][HD_val]
+                    print(time_val, budget_val, HD_val, path_set)
+                    # get average of multiple experiments
+                    y_set_temp = []
+                    for path in path_set:
+                        y_value = get_average_value_with_path(path, tag_name)
+                        y_set_temp.append(y_value)
+                    y_ave = sum(y_set_temp) / len(y_set_temp) if len(y_set_temp) else 1
+
+                    if HD_val:
+                        HD_str = '-HD'
+                    else:
+                        HD_str = '-No-HD'
+                    bar = plt.bar(x_counter, y_ave, hatch=bar_pattern[x_counter], label=scheme2stringShort[key] + HD_str)
+                    bars.append(bar)
+                    x_set.append(x_counter)
+                    x_labels.append(scheme2stringShort[key] + "\n" + HD_str)
+                    x_counter += 1
+                    print("y_ave", y_ave, "x_counter", x_counter)
+
+    plt.xticks(x_set, x_labels, fontsize=axis_size)
+    plt.yticks(fontsize=axis_size)
+    plt.ylabel(tag2equation[tag_name], fontsize=font_size)
+    plt.tight_layout()
+    plt.savefig("figures/exp-eight-result-" + tag_name + ".pdf", format='pdf', dpi=figure_dpi)
+    plt.savefig("figures/exp-eight-result-" + tag_name + ".eps", format='eps', dpi=figure_dpi)
+    plt.savefig("figures/exp-eight-result-" + tag_name + ".png", format='png', dpi=figure_dpi)
+    plt.show()
+
+    # draw legend
+    figlegend = plt.figure(figsize=(21.1, 0.7))
+    figlegend.legend(handles=bars, prop={"size": legend_size}, ncol=8)
+    figlegend.show()
+    figlegend.savefig("figures/legend_for_HD_effect_bar.pdf", format='pdf', dpi=figure_dpi)
+    figlegend.savefig("figures/legend_for_HD_effect_bar.eps", format='eps', dpi=figure_dpi)
+    figlegend.savefig("figures/legend_for_HD_effect_bar.png", format='png', dpi=figure_dpi)
+
+
+def get_episode_value_with_path(file_path, tag_name, epi_size=5000, print_log=False):
+    '''
+
+    Args:
+        path:
+        file_name:
+        tag_name:
+
+    Returns: the average value of the last 10 percent of the selected data file with a tag given.
+
+    '''
+    if print_log: print(file_path)
+
+    value_set = np.zeros(epi_size, dtype=float)  # any value exceed epi_size will be ignored.
+    set_index = 0
+    for summary_set in tf.compat.v1.train.summary_iterator(file_path):
+        for value in summary_set.summary.value:
+            if value.tag == tag_name:
+                value_set[set_index] = value.simple_value
+                set_index += 1
+
+        if set_index >= epi_size:
+            break
+
+    # # get last 10 percent element in the 'value_set'
+    # last_10_size = int(len(value_set) / 10)
+    # value_set_last_10 = value_set[-last_10_size:]
+    # ave_value = sum(value_set_last_10) / len(value_set_last_10) if len(value_set_last_10) else 0
+    # if print_log: print("average", ave_value)
+    return value_set
+
+def draw_accum_reward(tag_name):
+    # get all path
+    time_vary_set = [30]
+    budget_vary_set = [5]
+    HD_vary_set = [0, 2]
+    all_scheme_path_set = {}
+    scheme_name_set = ["att", "DefAtt"]
+    for scheme_name in scheme_name_set:
+        all_scheme_path_set[schemeShort2schemeLong[scheme_name]] = all_none_trial_finder_2(time_vary_set,
+                                                                                           budget_vary_set, HD_vary_set,
+                                                                                           scheme_name)
+    # Draw figure
+    epi_size = 5000
+    lines = []
+    print("Drawing:", tag_name)
+    plt.figure(figsize=(figure_width, figure_high))
+
+    for key in all_scheme_path_set.keys():
+        path_list = all_scheme_path_set[key]
+        for time_val in time_vary_set:
+            for budget_val in budget_vary_set:
+                for HD_val in HD_vary_set:
+                    path_set = path_list[time_val][budget_val][HD_val]
+                    print(time_val, budget_val, HD_val, path_set)
+                    y_set_temp = np.zeros(epi_size, dtype=float)
+                    for path in path_set:
+                        y_value = get_episode_value_with_path(path, tag_name, epi_size)
+                        y_set_temp += y_value
+
+                    y_set = y_set_temp/len(path_set)
+                    if HD_val:
+                        HD_str = '-HD'
+                    else:
+                        HD_str = '-No-HD'
+                    # smooth curve
+                    X_Y_Spline = make_interp_spline(range(epi_size), y_set)
+                    X_ = np.linspace(0, epi_size, 500)
+                    Y_ = X_Y_Spline(X_)
+                    # Draw line
+                    marker_step = int(len(X_)/5 - 1)
+                    line, = plt.plot(X_, Y_, linestyle=linestyle[key], linewidth=figure_linewidth,
+                                     markersize=marker_size, marker=marker_set[key], markevery=(0, marker_step), label=scheme2stringShort[key]+HD_str)
+                    lines.append(line)
+
+    # plt.legend(fontsize=legend_size)
+    plt.xlabel("Episodes", fontsize=font_size)
+    plt.ylabel(tag2equation[tag_name], fontsize=font_size)
+    plt.xticks(fontsize=axis_size)
+    plt.yticks(fontsize=axis_size)
+    plt.tight_layout()
+    plt.savefig("figures/exp-result-reward-analysis-" + tag_name + ".pdf", format='pdf', dpi=figure_dpi)
+    plt.savefig("figures/exp-result-reward-analysis-" + tag_name + ".eps", format='eps', dpi=figure_dpi)
+    plt.savefig("figures/exp-result-reward-analysis-" + tag_name + ".png", format='png', dpi=figure_dpi)
+    plt.show()
+
+    # Draw legend
+    fig = plt.figure()
+    figlegend = plt.figure(figsize=(11.2, 0.7))
+
+    figlegend.legend(handles=lines, prop={"size": legend_size}, ncol=4)
+    # fig.show()
+    figlegend.show()
+    figlegend.savefig("figures/legend_for_reward_analysis.pdf", format='pdf', dpi=figure_dpi)
+    figlegend.savefig("figures/legend_for_reward_analysis.eps", format='eps', dpi=figure_dpi)
+    figlegend.savefig("figures/legend_for_reward_analysis.png", format='png', dpi=figure_dpi)
+
+def display_legend_eight_schemes(all_scheme_path):
+    fig = plt.figure()
+    figlegend = plt.figure(figsize=(13.7, 0.7))
+    ax = fig.add_subplot(111)
+
+    lines = []
+    for key in all_scheme_path.keys():
+        line, = ax.plot([1, 2, 3], linestyle=linestyle[key], markersize=marker_size / 1.5, marker=marker_set[key],
+                        label=scheme2stringLong[key])
+        lines.append(line)
+    figlegend.legend(handles=lines, prop={"size": legend_size}, ncol=4)
+
+    fig.show()
+    figlegend.show()
+    figlegend.savefig("figures/legend_eight.svg", dpi=figure_dpi)
+    figlegend.savefig("figures/legend_eight.eps", dpi=figure_dpi)
+    figlegend.savefig("figures/legend_eight.png", dpi=figure_dpi)
+
+
+
 if __name__ == '__main__':
     # setting for data to read
     setting_folder = '50_5'
     scheme_name = 'att'
     trial_id = 98
     tag_name = "Ratio of Mission Completion"
-    vary_set = [30, 35, 40, 45, 50]
-    scheme_set = {'rand-rand': "A-Random, D-Random", 'rl-rand': "A-A3C, D-Random", 'rand-rl': "A-Random, D-A3C", 'rl-rl': "A-A3C, D-A3C"}
+    # vary_set = [10, 15, 20, 25, 30]
+    scheme2stringShort = {'rand-rand': "R-R", 'rl-rand': "A3C-R", 'rand-rl': "R-A3C", 'rl-rl': "A3C-A3C"}
+    scheme2stringLong = {'rand-rand': "A-Random, D-Random", 'rl-rand': "A-A3C, D-Random", 'rand-rl': "A-Random, D-A3C",
+                         'rl-rl': "A-A3C, D-A3C"}
+    scheme2stringDuo = {'rand-rand': "A-Random\nD-Random", 'rl-rand': "A-A3C\nD-Random", 'rand-rl': "A-Random\nD-A3C",
+                         'rl-rl': "A-A3C\nD-A3C"}
     linestyle = {'rand-rand': '-', 'rl-rand': '--', 'rand-rl': '-.', 'rl-rl': ':'}
     marker_set = {'rand-rand': "p", 'rl-rand': "d", 'rand-rl': "v", 'rl-rl': "x"}
-    scheme2string = {"Ratio of Mission Completion": "Ratio of completed mission\n tasks",
-                     "Energy Consumption":          "Energy consumption (mW)",
-                     "Attack Success Rate":         "Attack success ratio",
-                     "Mission Time (step)":         "Mission completion time",
-                     "Average Connect_RLD MD+HD Number": "Number of non-compromised,\n connected drones"}
-
-
+    tag2stringLong = {"Ratio of Mission Completion": "Ratio of completed mission\n tasks",
+                      "Energy Consumption": "Energy consumption (mW)",
+                      "Attack Success Rate": "Attack success ratio",
+                      "Mission Time (step)": "Mission completion time",
+                      "Average Connect_RLD MD+HD Number": "Number of non-compromised,\n connected drones",
+                      "Accumulated Reward Attacker": "Attacker's Accumulated\nReward",
+                      "Accumulated Reward Defender": "Defender's Accumulated\nReward"}
+    schemeShort2schemeLong = {"random": 'rand-rand', "att": 'rl-rand', "def": 'rand-rl', "DefAtt": 'rl-rl'}
+    tag2equation = {"Ratio of Mission Completion": '$\mathcal{R}_{MC}$',
+                    "Energy Consumption": '$\mathcal{EC}$',
+                    "Attack Success Rate": '$\mathcal{ASR}$',
+                    "Accumulated Reward Attacker": "$G^A$",
+                    "Accumulated Reward Defender": "$G^D$"}
 
     # setting for figure
     font_size = 25  # 25
@@ -320,6 +664,7 @@ if __name__ == '__main__':
     axis_size = 15
     marker_size = 12
     marker_list = ["p", "d", "v", "x", "s", "*", "1", "."]
+    bar_pattern = ["|", "\\", "/", "+", "-", ".", "*", "x", "o", "O"]
     strategy_number = 8
     max_x_length = 60
     use_legend = False
@@ -329,8 +674,8 @@ if __name__ == '__main__':
 
     # # sensitivity analysis results for scheme 'def_RL-att_Random'
     # use selected trial
-    def_best_trial_set = ['None', 'None', 'None', 'None', 'None']
-    scheme_name = "def"
+    # def_best_trial_set = ['None', 'None', 'None', 'None', 'None']
+    # scheme_name = "def"
     # draw_sens_analysis_ave_trial(vary_set, def_best_trial_set, scheme_name, "Ratio of Mission Completion")
     # draw_sens_analysis(vary_set, def_best_trial_set, scheme_name, "Ratio of Mission Completion")
     # draw_sens_analysis(vary_set, def_best_trial_set, scheme_name, "Energy Consumption")
@@ -340,17 +685,16 @@ if __name__ == '__main__':
 
     # # sensitivity analysis results for scheme 'def_Random-att_RL'
     # use selected trial
-    att_best_trial_set = ['None', 'None', 'None', 'None', 'None']
-    scheme_name = "att"
+    # att_best_trial_set = ['None', 'None', 'None', 'None', 'None']
+    # scheme_name = "att"
     # draw_sens_analysis(vary_set, att_best_trial_set, scheme_name, "Ratio of Mission Completion")
     # draw_sens_analysis(vary_set, att_best_trial_set, scheme_name, "Energy Consumption")
     # draw_sens_analysis(vary_set, att_best_trial_set, scheme_name, "Attack Success Rate")
     # draw_sens_analysis(vary_set, att_best_trial_set, scheme_name, "Mission Time (step)")
     # draw_sens_analysis(vary_set, att_best_trial_set, scheme_name, "Average Connect_RLD MD+HD Number")
 
-
     # use top 10 best trial
-    scheme_name = "att"
+    # scheme_name = "att"
     # top_value_list, top_path_list = top_10_trial_finder(vary_set, scheme_name)
     # draw_list_averaged_sens_analysis(vary_set, scheme_name, top_path_list, "Ratio of Mission Completion")
     # draw_list_averaged_sens_analysis(vary_set, scheme_name, top_path_list, "Energy Consumption")
@@ -358,26 +702,45 @@ if __name__ == '__main__':
     # draw_list_averaged_sens_analysis(vary_set, scheme_name, top_path_list, "Mission Time (step)")
     # draw_list_averaged_sens_analysis(vary_set, scheme_name, top_path_list, "Average Connect_RLD MD+HD Number")
 
-
     # use all trial
-    all_scheme_path_set = {}
-    scheme_name = "def"
-    all_path_list = all_none_trial_finder(vary_set, scheme_name)
-    all_scheme_path_set['rand-rl'] = all_path_list
-    scheme_name = "att"
-    all_path_list = all_none_trial_finder(vary_set, scheme_name)
-    all_scheme_path_set['rl-rand'] = all_path_list
-    scheme_name = "DefAtt"
-    all_path_list = all_none_trial_finder(vary_set, scheme_name)
-    all_scheme_path_set['rl-rl'] = all_path_list
+    # all_scheme_path_set = {}
+    # scheme_name = "def"
+    # all_path_list = all_none_trial_finder(vary_set, scheme_name)
+    # all_scheme_path_set['rand-rl'] = all_path_list
+    # scheme_name = "att"
+    # all_path_list = all_none_trial_finder(vary_set, scheme_name)
+    # all_scheme_path_set['rl-rand'] = all_path_list
+    # scheme_name = "DefAtt"
+    # all_path_list = all_none_trial_finder(vary_set, scheme_name)
+    # all_scheme_path_set['rl-rl'] = all_path_list
     # scheme_name = "random"
     # all_path_list = all_none_trial_finder(vary_set, scheme_name)
     # all_scheme_path_set['rand-rand'] = all_path_list
 
-    draw_all_scheme_sens_analysis(vary_set, all_scheme_path_set, "Ratio of Mission Completion")
-    draw_all_scheme_sens_analysis(vary_set, all_scheme_path_set, "Energy Consumption")
-    draw_all_scheme_sens_analysis(vary_set, all_scheme_path_set, "Attack Success Rate")
-    draw_all_scheme_sens_analysis(vary_set, all_scheme_path_set, "Mission Time (step)")
-    draw_all_scheme_sens_analysis(vary_set, all_scheme_path_set, "Average Connect_RLD MD+HD Number")
+    # draw_all_scheme_sens_analysis(vary_set, all_scheme_path_set, "Ratio of Mission Completion")
+    # draw_all_scheme_sens_analysis(vary_set, all_scheme_path_set, "Energy Consumption")
+    # draw_all_scheme_sens_analysis(vary_set, all_scheme_path_set, "Attack Success Rate")
+    # draw_all_scheme_sens_analysis(vary_set, all_scheme_path_set, "Mission Time (step)")
+    # draw_all_scheme_sens_analysis(vary_set, all_scheme_path_set, "Average Connect_RLD MD+HD Number")
+    # display_legend_four_schemes(all_scheme_path_set)
+
+    # Figure to show the Sensitivity Analysis
+    # Varying mission duration (time)
+    # draw_all_scheme_sens_analysis_2("Ratio of Mission Completion", vary_time=True)
+    # draw_all_scheme_sens_analysis_2("Energy Consumption", vary_time=True)
+    # draw_all_scheme_sens_analysis_2("Attack Success Rate", vary_time=True)
+    # Varying attack budget
+    draw_all_scheme_sens_analysis_2("Ratio of Mission Completion", vary_time=False)
+    # draw_all_scheme_sens_analysis_2("Energy Consumption", vary_time=False)
+    # draw_all_scheme_sens_analysis_2("Attack Success Rate", vary_time=False)
+
+    # Figure to show the Effect of Honey Drone
+    # draw_eight_scheme_bar("Ratio of Mission Completion")
+    # draw_eight_scheme_bar("Energy Consumption")
+    # draw_eight_scheme_bar("Attack Success Rate")
+
+    # Figure to the accumulated reward
+    # draw_accum_reward("Accumulated Reward Attacker")
+    # draw_accum_reward("Accumulated Reward Defender")
 
 

@@ -199,44 +199,43 @@ def generate_route_array(data, manager, routing, solution, indexs_MD):
     return route_array
 
 
-def fix_result():
-    res = {2: np.array([[0., 0.],
-                        [401., 1.],
-                        [301., 1.],
-                        [201., 1.],
-                        [101., 1.],
-                        [0., 0.]]), 3: np.array([[0., 0.],
-                                                 [101., 301.],
-                                                 [101., 401.],
-                                                 [201., 401.],
-                                                 [301., 401.],
-                                                 [201., 301.],
-                                                 [101., 201.],
-                                                 [0., 0.]]), 4: np.array([[0., 0.],
-                                                                          [1., 1.],
-                                                                          [401., 401.],
-                                                                          [301., 301.],
-                                                                          [201., 201.],
-                                                                          [101., 101.],
-                                                                          [0., 0.]]), 5: np.array([[0., 0.],
-                                                                                                   [301., 101.],
-                                                                                                   [401., 101.],
-                                                                                                   [401., 201.],
-                                                                                                   [401., 301.],
-                                                                                                   [301., 201.],
-                                                                                                   [201., 101.],
-                                                                                                   [0., 0.]]),
-           6: np.array([[0., 0.],
-                        [1., 401.],
-                        [1., 301.],
-                        [1., 201.],
-                        [1., 101.],
-                        [0., 0.]])}
-    return res
+# def fix_result():
+#     res = {2: np.array([[0., 0.],
+#                         [401., 1.],
+#                         [301., 1.],
+#                         [201., 1.],
+#                         [101., 1.],
+#                         [0., 0.]]), 3: np.array([[0., 0.],
+#                                                  [101., 301.],
+#                                                  [101., 401.],
+#                                                  [201., 401.],
+#                                                  [301., 401.],
+#                                                  [201., 301.],
+#                                                  [101., 201.],
+#                                                  [0., 0.]]), 4: np.array([[0., 0.],
+#                                                                           [1., 1.],
+#                                                                           [401., 401.],
+#                                                                           [301., 301.],
+#                                                                           [201., 201.],
+#                                                                           [101., 101.],
+#                                                                           [0., 0.]]), 5: np.array([[0., 0.],
+#                                                                                                    [301., 101.],
+#                                                                                                    [401., 101.],
+#                                                                                                    [401., 201.],
+#                                                                                                    [401., 301.],
+#                                                                                                    [301., 201.],
+#                                                                                                    [201., 101.],
+#                                                                                                    [0., 0.]]),
+#            6: np.array([[0., 0.],
+#                         [1., 401.],
+#                         [1., 301.],
+#                         [1., 201.],
+#                         [1., 101.],
+#                         [0., 0.]])}
+#     return res
 
 
 def MD_path_plan_main(indexs_MD, locations_MD, map_cell_number, cell_size, not_scanned_map):
-    return fix_result()
     print_traj = False
     """Entry point of the program."""
     # print_debug("locations_MD", locations_MD)
@@ -294,7 +293,7 @@ def MD_path_plan_main(indexs_MD, locations_MD, map_cell_number, cell_size, not_s
     # Setting first solution heuristic.
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
     search_parameters.first_solution_strategy = (
-        routing_enums_pb2.FirstSolutionStrategy.AUTOMATIC) # algorithm may change here)
+        routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC) # algorithm may change here)
 
     # Setting second solution
     # search_parameters = pywrapcp.DefaultRoutingSearchParameters()

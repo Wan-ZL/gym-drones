@@ -55,7 +55,7 @@ ObsType = TypeVar("ObsType")
 
 
 class HyperGameSim(Env):
-    def __init__(self, fixed_seed=True, miss_dur=30, target_size=5):
+    def __init__(self, fixed_seed=True, miss_dur=30, target_size=5, max_att_budget=5, num_HD=2):
         # variable for bullet drone env
         self.print = False
         self.gui = False
@@ -72,13 +72,15 @@ class HyperGameSim(Env):
         self.START = None
         self.ARGS = None
         self.start_time = None
-        self.initDroneEnv(miss_dur, target_size)
+        self.initDroneEnv(miss_dur, target_size, max_att_budget, num_HD)
         self.close_env()  # close client in init for avoiding client limit error
 
         # variable for current env
         self.fixed_seed = fixed_seed
         self.miss_dur = miss_dur
         self.target_size = target_size
+        self.max_att_budget = max_att_budget
+        self.num_HD = num_HD
         self.action_space = dict()
         self.action_space['def'] = Discrete(self.defender.number_of_strategy)
         self.action_space['att'] = Discrete(self.attacker.number_of_strategy)
@@ -106,7 +108,7 @@ class HyperGameSim(Env):
                 # print("closing client", self.env.getPyBulletClient())
                 self.env.close()
 
-    def reset(self, *args, miss_dur=30, target_size=5):
+    def reset(self, *args, miss_dur=30, target_size=5, max_att_budget=5, num_HD=2):
         '''
 
         Args:
@@ -117,7 +119,7 @@ class HyperGameSim(Env):
 
         '''
         self.start_time = time.time()
-        self.initDroneEnv(miss_dur, target_size)
+        self.initDroneEnv(miss_dur, target_size, max_att_budget, num_HD)
         # self.system.mission_duration_max = miss_dur
         # self.system.map_cell_number = target_size
 
@@ -149,11 +151,11 @@ class HyperGameSim(Env):
 
         return state
 
-    def initDroneEnv(self, miss_dur=30, target_size=5):
+    def initDroneEnv(self, miss_dur=30, target_size=5, max_att_budget=5, num_HD=2):
         # create model class
-        self.system = system_model(mission_duration_max=miss_dur, map_cell_number=target_size)
+        self.system = system_model(mission_duration_max=miss_dur, map_cell_number=target_size, num_HD=num_HD)
         self.defender = defender_model(self.system)
-        self.attacker = attacker_model(self.system)
+        self.attacker = attacker_model(self.system, max_att_budget)
 
         if self.print: print("attacker locaiton", self.attacker.xyz)
 

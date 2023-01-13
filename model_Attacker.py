@@ -4,7 +4,7 @@ import numpy as np
 from collections import defaultdict
 
 class attacker_model(player_model):
-    def __init__(self, system):
+    def __init__(self, system, max_att_budget=5):
         player_model.__init__(self, system)
         # randomly set to target area when create
         self.xyz = np.array([int(system.map_size/2) ,int(system.map_size/2), 0]) #np.array([random.randrange(1,system.map_cell_number+1), random.randrange(1,system.map_cell_number+1), 0])
@@ -26,7 +26,7 @@ class attacker_model(player_model):
         self.attack_success_prob = 0.43          # attack success rate of each attack on each drone  # use CVSS from android device https://www.cvedetails.com/cve/CVE-2021-39804/
         self.att_counter = 0    # number of attack launched in a round
         self.att_succ_counter = 0  # count the number of drone compromised in a round
-        self.max_att_budget = 5     # the maximum number of attack can launch in a round
+        self.max_att_budget = max_att_budget     # the maximum number of attack can launch in a round
 
     def signal2strategy(self, obs_signal):
         conditions = lambda x: {

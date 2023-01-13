@@ -25,7 +25,7 @@ from Gym_HoneyDrone_Defender_and_Attacker import HyperGameSim
 
 
 def objective(trial, fixed_seed=True, on_server=True, exist_model=False, exp_scheme=0, player_name='def',
-              is_custom_env=True, miss_dur=30, target_size=5):
+              is_custom_env=True, miss_dur=30, target_size=5, max_att_budget=5, num_HD=2):
     start_time = time.time()
 
     if trial is not None:
@@ -42,35 +42,35 @@ def objective(trial, fixed_seed=True, on_server=True, exist_model=False, exp_sch
 
     # default setting for players
     glob_episode = 5000
-    # default setting for defender
-    config_def = dict(glob_episode_thred=glob_episode, min_episode=1000, gamma=0.913763771439141,
-                      lr=0.00135463670164839,
-                      LR_decay=0.97127344458321, epsilon=0.0119790647086112,
-                      epsilon_decay=0.970168515121627, pi_net_struc=[64, 128, 128, 64], v_net_struct=[64, 128, 128, 64])
+    # default setting for defender (from trial '1670590242.383237-def--Trial_606-eps')
+    config_def = dict(glob_episode_thred=glob_episode, min_episode=1000, gamma=0.97916,
+                      lr=0.0027225,
+                      LR_decay=0.92175, epsilon=0.49966,
+                      epsilon_decay=0.93590, pi_net_struc=[64, 128, 128, 64], v_net_struct=[64, 128, 128, 64])
 
     # default setting for attacker
-    config_att = dict(glob_episode_thred=glob_episode, min_episode=1000, gamma=0.988784695574701,
-                      lr=0.00861718519746169,
-                      LR_decay=0.974819836482024, epsilon=0.0642399295782559,
-                      epsilon_decay=0.961601926251759, pi_net_struc=[64, 128, 128, 64], v_net_struct=[64, 128, 128, 64])
+    config_att = dict(glob_episode_thred=glob_episode, min_episode=1000, gamma=0.91376,
+                      lr=0.0013546,
+                      LR_decay=0.97127, epsilon=0.011979,
+                      epsilon_decay=0.97017, pi_net_struc=[64, 128, 128, 64], v_net_struct=[64, 128, 128, 64])
 
     # Suggest values of the hyperparameters using a trial object.
     if trial is not None:
         if exp_scheme == 0 or exp_scheme == 2:  # those two scheme use D-a3c
             # trial for defender
-            config_def["gamma"] = trial.suggest_loguniform('gamma', 0.9, 0.99)
-            config_def["lr"] = trial.suggest_loguniform('lr', 0.001, 0.01)
-            config_def["LR_decay"] = trial.suggest_loguniform('LR_decay', 0.9, 0.99)
-            config_def["epsilon"] = trial.suggest_loguniform('epsilon', 0.01, 0.5)
-            config_def["epsilon_decay"] = trial.suggest_loguniform('epsilon_decay', 0.9, 0.99)
+            config_def["gamma"] = trial.suggest_loguniform('gamma_def', 0.5, 0.99)
+            config_def["lr"] = trial.suggest_loguniform('lr_def', 0.001, 0.01)
+            config_def["LR_decay"] = trial.suggest_loguniform('LR_decay_def', 0.9, 0.99)
+            config_def["epsilon"] = trial.suggest_loguniform('epsilon_def', 0.01, 0.5)
+            config_def["epsilon_decay"] = trial.suggest_loguniform('epsilon_decay_def', 0.9, 0.99)
 
         if exp_scheme == 1 or exp_scheme == 2:  # those two scheme use A-a3c
             # trial for attacker
-            config_att["gamma"] = trial.suggest_loguniform('gamma', 0.9, 0.99)
-            config_att["lr"] = trial.suggest_loguniform('lr', 0.001, 0.01)
-            config_att["LR_decay"] = trial.suggest_loguniform('LR_decay', 0.9, 0.99)
-            config_att["epsilon"] = trial.suggest_loguniform('epsilon', 0.01, 0.5)
-            config_att["epsilon_decay"] = trial.suggest_loguniform('epsilon_decay', 0.9, 0.99)
+            config_att["gamma"] = trial.suggest_loguniform('gamma_att', 0.9, 0.99)
+            config_att["lr"] = trial.suggest_loguniform('lr_att', 0.001, 0.01)
+            config_att["LR_decay"] = trial.suggest_loguniform('LR_decay_att', 0.9, 0.99)
+            config_att["epsilon"] = trial.suggest_loguniform('epsilon_att', 0.01, 0.5)
+            config_att["epsilon_decay"] = trial.suggest_loguniform('epsilon_decay_att', 0.9, 0.99)
 
     if exist_model:
         config_def["epsilon"] = 0
@@ -79,7 +79,8 @@ def objective(trial, fixed_seed=True, on_server=True, exist_model=False, exp_sch
     print("config_att", config_att)
 
     if is_custom_env:
-        env = HyperGameSim(fixed_seed=fixed_seed)
+        env = HyperGameSim(fixed_seed=fixed_seed, miss_dur=miss_dur, target_size=target_size,
+                           max_att_budget=max_att_budget, num_HD=num_HD)
         input_dims_def = env.observation_space['def'].shape[0]
         n_actions_def = env.action_space['def'].n
         input_dims_att = env.observation_space['att'].shape[0]
@@ -150,6 +151,10 @@ def objective(trial, fixed_seed=True, on_server=True, exist_model=False, exp_sch
     shared_dict['t_loss_att_writer'] = mp.Queue()  # total loss of actor critic for attacker
     shared_dict['c_loss_att_writer'] = mp.Queue()  # loss of critic for attacker
     shared_dict['a_loss_att_writer'] = mp.Queue()  # loss of actor for attacker
+    shared_dict['att_succ_counter_writer'] = mp.Queue()  # attack success counter
+    shared_dict['att_succ_counter_ave_writer'] = mp.Queue()
+    shared_dict['att_counter_writer'] = mp.Queue()  # attack launched counter
+    shared_dict['att_counter_ave_writer'] = mp.Queue()
     shared_dict['att_succ_rate_writer'] = mp.Queue()  # attack success rate
     shared_dict['mission_condition_writer'] = mp.Queue()  # 0 means mission fail, 1 means mission success
     shared_dict['total_energy_consump_writer'] = mp.Queue()  # energy consumption of drones
@@ -180,12 +185,12 @@ def objective(trial, fixed_seed=True, on_server=True, exist_model=False, exp_sch
     # workers = [Agent(glob_AC_def, optim_def, shared_dict=shared_dict, lr_decay=config_def["LR_decay"], gamma=config_def["gamma"],
     #                  epsilon=config_def["epsilon"], epsilon_decay=config_def["epsilon_decay"],
     #                  MAX_EP=config_def["glob_episode_thred"], fixed_seed=fixed_seed, trial=trial,
-    #                  name_id=i, player=player_name, is_custom_env=is_custom_env, miss_dur=miss_dur, target_size=target_size) for i in range(num_worker)]
+    #                  name_id=i, player=player_name, is_custom_env=is_custom_env, miss_dur=miss_dur, target_size=target_size, max_att_budget=max_att_budget, num_HD=num_HD) for i in range(num_worker)]
     workers = [Agent(glob_AC_def, glob_AC_att, optim_def, optim_att, shared_dict=shared_dict, config_def=config_def,
                      config_att=config_att, fixed_seed=fixed_seed, trial=trial,
                      name_id=i, exp_scheme=exp_scheme, player=player_name, exist_model=exist_model,
                      is_custom_env=is_custom_env, miss_dur=miss_dur,
-                     target_size=target_size) for i in range(num_worker)]
+                     target_size=target_size, max_att_budget=max_att_budget, num_HD=num_HD) for i in range(num_worker)]
 
     [w.start() for w in workers]
     [w.join() for w in workers]
@@ -199,9 +204,11 @@ def objective(trial, fixed_seed=True, on_server=True, exist_model=False, exp_sch
     # ========= Save global model =========
     # run 'tensorboard --logdir=runs' in terminal to start TensorBoard.
     if on_server:
-        path = "/home/zelin/Drone/data/" + str(miss_dur) + "_" + str(target_size) + "/" + player_name + "/"
+        path = "/home/zelin/Drone/data/" + str(miss_dur) + "_" + str(max_att_budget) + "_" + str(
+            num_HD) + "/" + player_name + "/"
     else:
-        path = "/Users/wanzelin/办公/gym-drones/data/" + str(miss_dur) + "_" + str(target_size) + "/" + player_name + "/"
+        path = "/Users/wanzelin/办公/gym-drones/data/" + str(miss_dur) + "_" + str(max_att_budget) + "_" + str(
+            num_HD) + "/" + player_name + "/"
     os.makedirs(path + "model", exist_ok=True)
     torch.save(glob_AC_def.state_dict(),
                path + "model/trained_A3C_" + str(start_time) + "_" + player_name + "_Trial_" + trial_num_str)
@@ -221,9 +228,9 @@ def objective(trial, fixed_seed=True, on_server=True, exist_model=False, exp_sch
         else:
             temp_config[key] = value
     if on_server:
-        path = "/home/zelin/Drone/data/" + str(miss_dur) + "_" + str(target_size) + "/"
+        path = "/home/zelin/Drone/data/" + str(miss_dur) + "_" + str(max_att_budget) + "_" + str(num_HD) + "/"
     else:
-        path = "data/" + str(miss_dur) + "_" + str(target_size) + "/"
+        path = "data/" + str(miss_dur) + "_" + str(max_att_budget) + "_" + str(num_HD) + "/"
     writer_hparam = SummaryWriter(
         log_dir=path + "runs_" + player_name + "/each_run_" + str(start_time) + "-" + player_name +
                 "-Trial_" + trial_num_str + "-hparm")
@@ -236,18 +243,21 @@ def objective(trial, fixed_seed=True, on_server=True, exist_model=False, exp_sch
 
 
 if __name__ == '__main__':
-    test_mode = True  # True means use preset hyperparameter, and optuna will not be used.
+    test_mode = False  # True means use preset hyperparameter, and optuna will not be used. False means use optuna
     exist_model = False  # True means use the existing pre-trained models. False means train new models.
-    exp_scheme = 0  # 0 means A-random D-a3c, 1 means A-a3c D-random, 2 means A-a3c D-a3c, 3 means A-random D-random
+    exp_scheme = 1  # 0 means A-random D-a3c, 1 means A-a3c D-random, 2 means A-a3c D-a3c, 3 means A-random D-random
     # is_defender = True      # True means train a defender RL, False means train an attacker RL
     fixed_seed = True  # True means the seeds for pytorch, numpy, and python will be fixed.
     is_custom_env = True  # True means use the customized drone environment, False means use gym 'CartPole-v1'.
 
     # sensitivity analysis value
-    miss_dur = 30  # default: 30
-    target_size = 5  # default: 5. The 'Number of Cell to Scan' = 'target_size' * 'target_size'
+    miss_dur = 30  # default: 30. Try to change from 10, 20, 30, 40 to 50
+    max_att_budget = 5  # default: 5. The maximum number of attack can launch in a round
+    num_HD = 2  # default: 2. The number of honey drone
 
-    test_mode_run_time = 10
+    test_mode_run_time = 100
+
+    target_size = 5  # default: 5. The 'Number of Cell to Scan' = 'target_size' * 'target_size'
 
     if exp_scheme == 0:
         player_name = 'def'
@@ -281,22 +291,26 @@ if __name__ == '__main__':
         print("testing mode")
         for _ in range(test_mode_run_time):
             objective(None, fixed_seed=fixed_seed, on_server=on_server, exist_model=exist_model, exp_scheme=exp_scheme,
-                      player_name=player_name, is_custom_env=is_custom_env, miss_dur=miss_dur, target_size=target_size)
+                      player_name=player_name, is_custom_env=is_custom_env, miss_dur=miss_dur, target_size=target_size,
+                      max_att_budget=max_att_budget, num_HD=num_HD)
     else:
         print("training mode")
         if on_server:
-            db_path = "/home/zelin/Drone/data/" + str(miss_dur) + "_" + str(target_size) + "/" + player_name + "/"
+            db_path = "/home/zelin/Drone/data/" + str(miss_dur) + "_" + str(max_att_budget) + "_" + str(
+                num_HD) + "/" + player_name + "/"
             os.makedirs(db_path, exist_ok=True)
             study = optuna.create_study(direction='maximize', study_name="A3C-hyperparameter-study",
-                                        storage="sqlite://///" + db_path + "HyperPara_database.db",
+                                        storage="sqlite://///" + db_path + "HyperPara_database_sche-" + str(
+                                            exp_scheme) + ".db",
                                         load_if_exists=True)
         else:
-            db_path = "/Users/wanzelin/办公/gym-drones/data/" + str(miss_dur) + "_" + str(
-                target_size) + "/" + player_name + "/"
+            db_path = "/Users/wanzelin/办公/gym-drones/data/" + str(miss_dur) + "_" + str(max_att_budget) + "_" + str(
+                num_HD) + "/" + player_name + "/"
             os.makedirs(db_path, exist_ok=True)
             study = optuna.create_study(direction='maximize', study_name="A3C-hyperparameter-study",
-                                        storage="sqlite:////" + db_path + "HyperPara_database.db",
+                                        storage="sqlite:////" + db_path + "HyperPara_database_sche-" + str(
+                                            exp_scheme) + ".db",
                                         load_if_exists=True)
         study.optimize(
             lambda trial: objective(trial, fixed_seed, on_server, exist_model, exp_scheme, player_name, is_custom_env,
-                                    miss_dur, target_size), n_trials=100)
+                                    miss_dur, target_size, max_att_budget, num_HD), n_trials=50)
