@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --nodes=1 --ntasks-per-node=1 --cpus-per-task=76
-#SBATCH -t 06-00:00:00
+#SBATCH -t 03-00:00:00
 #SBATCH -p normal_q
 #SBATCH --account=zelin1
 #SBATCH --export=NONE # this makes sure the compute environment is clean

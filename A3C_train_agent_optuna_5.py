@@ -42,17 +42,15 @@ def objective(trial, fixed_seed=True, on_server=True, exist_model=False, exp_sch
 
     # default setting for players
     glob_episode = 5000
-    # default setting for defender (from trial '1670590242.383237-def--Trial_606-eps')
-    config_def = dict(glob_episode_thred=glob_episode, min_episode=1000, gamma=0.97916,
-                      lr=0.0027225,
-                      LR_decay=0.92175, epsilon=0.49966,
-                      epsilon_decay=0.93590, pi_net_struc=[64, 128, 128, 64], v_net_struct=[64, 128, 128, 64])
+    # default setting for defender (from trial 'each_run_1673652410.2380698-def-Trial_351')
+    config_def = dict(glob_episode_thred=glob_episode, min_episode=1000, gamma=0.59428,
+                      lr=0.0014270, LR_decay=0.97967, epsilon=0.073893,
+                      epsilon_decay=0.90245, pi_net_struc=[64, 128, 128, 64], v_net_struct=[64, 128, 128, 64])
 
-    # default setting for attacker
-    config_att = dict(glob_episode_thred=glob_episode, min_episode=1000, gamma=0.91376,
-                      lr=0.0013546,
-                      LR_decay=0.97127, epsilon=0.011979,
-                      epsilon_decay=0.97017, pi_net_struc=[64, 128, 128, 64], v_net_struct=[64, 128, 128, 64])
+    # default setting for attacker (from trial 'each_run_1673657027.4533134-att--Trial_369')
+    config_att = dict(glob_episode_thred=glob_episode, min_episode=1000, gamma=0.92957,
+                      lr=0.00192, LR_decay=0.98718, epsilon=0.21362,
+                      epsilon_decay=0.90012, pi_net_struc=[64, 128, 128, 64], v_net_struct=[64, 128, 128, 64])
 
     # Suggest values of the hyperparameters using a trial object.
     if trial is not None:
@@ -216,16 +214,23 @@ def objective(trial, fixed_seed=True, on_server=True, exist_model=False, exp_sch
     # ========= Write Hparameter to Tensorboard =========
     # convert list in self.config to integers
     temp_config = {}
-    for key, value in config_def.items():
+    if exp_scheme == 1: # case of find attacker's hyperparameter
+        items_for_TB_hpara = config_att.items()
+    else:               # all other case only consider defender's hyperparameter
+        items_for_TB_hpara = config_def.items()
+    for key, value in items_for_TB_hpara:
         if key == 'pi_net_struc':
+            # loop write structure
             temp_config['pi_net_num'] = len(value)
             for index, num_node in enumerate(value):
                 temp_config['pi_net' + str(index)] = num_node
         elif key == 'v_net_struct':
+            # loop write structure
             temp_config['v_net_num'] = len(value)
             for index, num_node in enumerate(value):
                 temp_config['v_net' + str(index)] = num_node
         else:
+            # simply write down
             temp_config[key] = value
     if on_server:
         path = "/home/zelin/Drone/data/" + str(miss_dur) + "_" + str(max_att_budget) + "_" + str(num_HD) + "/"
@@ -243,9 +248,9 @@ def objective(trial, fixed_seed=True, on_server=True, exist_model=False, exp_sch
 
 
 if __name__ == '__main__':
-    test_mode = False  # True means use preset hyperparameter, and optuna will not be used. False means use optuna
+    test_mode = True  # True means use preset hyperparameter, and optuna will not be used. False means use optuna
     exist_model = False  # True means use the existing pre-trained models. False means train new models.
-    exp_scheme = 1  # 0 means A-random D-a3c, 1 means A-a3c D-random, 2 means A-a3c D-a3c, 3 means A-random D-random
+    exp_scheme = 0  # 0 means A-random D-a3c, 1 means A-a3c D-random, 2 means A-a3c D-a3c, 3 means A-random D-random
     # is_defender = True      # True means train a defender RL, False means train an attacker RL
     fixed_seed = True  # True means the seeds for pytorch, numpy, and python will be fixed.
     is_custom_env = True  # True means use the customized drone environment, False means use gym 'CartPole-v1'.
@@ -255,7 +260,7 @@ if __name__ == '__main__':
     max_att_budget = 5  # default: 5. The maximum number of attack can launch in a round
     num_HD = 2  # default: 2. The number of honey drone
 
-    test_mode_run_time = 100
+    test_mode_run_time = 50
 
     target_size = 5  # default: 5. The 'Number of Cell to Scan' = 'target_size' * 'target_size'
 
