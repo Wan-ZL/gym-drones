@@ -219,7 +219,7 @@ def all_none_trial_finder_2(time_vary_set, budget_vary_set, HD_vary_set, scheme)
             for HD_val in HD_vary_set:
                 setting_folder = str(time_val) + '_' + str(budget_val) + '_' + str(HD_val)
                 print("searching", setting_folder)
-                path_list = glob.glob('data/' + setting_folder + '/runs_' + scheme + '/*-eps')
+                path_list = glob.glob('data 01.12.2023/' + setting_folder + '/runs_' + scheme + '/*-eps')
                 value_set = []
                 path_set = []
                 # max_value = 0
@@ -379,18 +379,9 @@ def draw_all_scheme_sens_analysis_2(tag_name, vary_time=True):
                     y_set_temp = []
                     for path in path_set:
                         y_value = get_average_value_with_path(path, tag_name)
+                        print("y_value", y_value)
                         y_set_temp.append(y_value)
                     y_ave = sum(y_set_temp) / len(y_set_temp) if len(y_set_temp) else 0
-
-                    # fake data
-                    if not vary_time:
-                        if budget_val==2:
-                            if tag_name is "Ratio of Mission Completion":
-                                y_ave = 0.793
-                            elif tag_name is "Energy Consumption":
-                                y_ave = 111.34
-                            elif tag_name is "Attack Success Rate":
-                                y_ave = 0.4352
 
 
                     y_set.append(y_ave)
@@ -466,11 +457,11 @@ def draw_eight_scheme_bar(tag_name):
     print("Drawing:", tag_name)
     plt.figure(figsize=(figure_width, figure_high))
     bars = []
-    for HD_val in HD_vary_set:
-        for key in all_scheme_path_set.keys():
-            path_list = all_scheme_path_set[key]
-            for time_val in time_vary_set:
-                for budget_val in budget_vary_set:
+    for key in all_scheme_path_set.keys():
+        path_list = all_scheme_path_set[key]
+        for time_val in time_vary_set:
+            for budget_val in budget_vary_set:
+                for HD_val in HD_vary_set:
                     path_set = path_list[time_val][budget_val][HD_val]
                     print(time_val, budget_val, HD_val, path_set)
                     # get average of multiple experiments
@@ -478,12 +469,79 @@ def draw_eight_scheme_bar(tag_name):
                     for path in path_set:
                         y_value = get_average_value_with_path(path, tag_name)
                         y_set_temp.append(y_value)
-                    y_ave = sum(y_set_temp) / len(y_set_temp) if len(y_set_temp) else 1
+                    y_ave = sum(y_set_temp) / len(y_set_temp) if len(y_set_temp) else 0
 
                     if HD_val:
                         HD_str = '-HD'
                     else:
                         HD_str = '-No-HD'
+                    bar = plt.bar(x_counter, y_ave, hatch=bar_pattern[x_counter], label=scheme2stringShort[key] + HD_str)
+                    bars.append(bar)
+                    x_set.append(x_counter)
+                    x_labels.append(scheme2stringShort[key] + "\n" + HD_str)
+                    x_counter += 1
+                    print("y_ave", y_ave, "x_counter", x_counter)
+
+    plt.xticks(x_set, x_labels, fontsize=axis_size)
+    plt.yticks(fontsize=axis_size)
+    plt.ylabel(tag2equation[tag_name], fontsize=font_size)
+    plt.tight_layout()
+    plt.savefig("figures/exp-eight-result-" + tag_name + ".pdf", format='pdf', dpi=figure_dpi)
+    plt.savefig("figures/exp-eight-result-" + tag_name + ".eps", format='eps', dpi=figure_dpi)
+    plt.savefig("figures/exp-eight-result-" + tag_name + ".png", format='png', dpi=figure_dpi)
+    plt.show()
+
+    # draw legend
+    figlegend = plt.figure(figsize=(21.1, 0.7))
+    figlegend.legend(handles=bars, prop={"size": legend_size}, ncol=8)
+    figlegend.show()
+    figlegend.savefig("figures/legend_for_HD_effect_bar.pdf", format='pdf', dpi=figure_dpi)
+    figlegend.savefig("figures/legend_for_HD_effect_bar.eps", format='eps', dpi=figure_dpi)
+    figlegend.savefig("figures/legend_for_HD_effect_bar.png", format='png', dpi=figure_dpi)
+
+
+
+def draw_eight_scheme_bar_2(tag_name):
+    # get all path
+    time_vary_set = [30]
+    budget_vary_set = [5]
+    HD_vary_set = [2, 0]
+    all_scheme_path_set = {}
+    scheme_name_set = ["random", "def", "att", "DefAtt"]
+    for scheme_name in scheme_name_set:
+        all_scheme_path_set[schemeShort2schemeLong[scheme_name]] = all_none_trial_finder_2(time_vary_set,
+                                                                                           budget_vary_set, HD_vary_set,
+                                                                                           scheme_name)
+    # Draw figure
+    x_labels = []
+    x_set = []
+    x_counter = 0
+    print("Drawing:", tag_name)
+    plt.figure(figsize=(figure_width, figure_high))
+    bars = []
+    for key in all_scheme_path_set.keys():
+        path_list = all_scheme_path_set[key]
+        for time_val in time_vary_set:
+            for budget_val in budget_vary_set:
+                for HD_val in HD_vary_set:
+                    if HD_val:
+                        HD_str = '-HD'
+                        total_drone = 7
+                    else:
+                        HD_str = '-No-HD'
+                        total_drone = 5
+                    path_set = path_list[time_val][budget_val][HD_val]
+                    print(time_val, budget_val, HD_val, path_set)
+                    # get average of multiple experiments
+                    y_set_temp = []
+                    for path in path_set:
+                        y_value = get_average_value_with_path(path, "Average Active MD+HD Number")
+                        print("total_drone", total_drone, ", alive_drone", y_value)
+                        y_value = total_drone - y_value
+                        y_set_temp.append(y_value)
+                    y_ave = sum(y_set_temp) / len(y_set_temp) if len(y_set_temp) else 0
+
+
                     bar = plt.bar(x_counter, y_ave, hatch=bar_pattern[x_counter], label=scheme2stringShort[key] + HD_str)
                     bars.append(bar)
                     x_set.append(x_counter)
@@ -540,13 +598,13 @@ def get_episode_value_with_path(file_path, tag_name, epi_size=5000, print_log=Fa
     # if print_log: print("average", ave_value)
     return value_set
 
-def draw_accum_reward(tag_name):
+def draw_accum_reward(tag_name, scheme_name_set=["att", "DefAtt"]):
     # get all path
     time_vary_set = [30]
     budget_vary_set = [5]
-    HD_vary_set = [0, 2]
+    HD_vary_set = [2, 0]
     all_scheme_path_set = {}
-    scheme_name_set = ["att", "DefAtt"]
+    # scheme_name_set = ["att", "def", "DefAtt"]
     for scheme_name in scheme_name_set:
         all_scheme_path_set[schemeShort2schemeLong[scheme_name]] = all_none_trial_finder_2(time_vary_set,
                                                                                            budget_vary_set, HD_vary_set,
@@ -597,14 +655,14 @@ def draw_accum_reward(tag_name):
 
     # Draw legend
     fig = plt.figure()
-    figlegend = plt.figure(figsize=(11.2, 0.7))
+    figlegend = plt.figure(figsize=(6, 1.05))
 
-    figlegend.legend(handles=lines, prop={"size": legend_size}, ncol=4)
+    figlegend.legend(handles=lines, prop={"size": legend_size}, ncol=2)
     # fig.show()
     figlegend.show()
-    figlegend.savefig("figures/legend_for_reward_analysis.pdf", format='pdf', dpi=figure_dpi)
-    figlegend.savefig("figures/legend_for_reward_analysis.eps", format='eps', dpi=figure_dpi)
-    figlegend.savefig("figures/legend_for_reward_analysis.png", format='png', dpi=figure_dpi)
+    figlegend.savefig("figures/legend_for_reward_analysis"+tag_name+".pdf", format='pdf', dpi=figure_dpi)
+    figlegend.savefig("figures/legend_for_reward_analysis"+tag_name+".eps", format='eps', dpi=figure_dpi)
+    figlegend.savefig("figures/legend_for_reward_analysis"+tag_name+".png", format='png', dpi=figure_dpi)
 
 def display_legend_eight_schemes(all_scheme_path):
     fig = plt.figure()
@@ -652,7 +710,11 @@ if __name__ == '__main__':
                     "Energy Consumption": '$\mathcal{EC}$',
                     "Attack Success Rate": '$\mathcal{ASR}$',
                     "Accumulated Reward Attacker": "$G^A$",
-                    "Accumulated Reward Defender": "$G^D$"}
+                    "Accumulated Reward Defender": "$G^D$",
+                    "Mission Time (step)": "Mission completion time",
+                    "Average Connect_RLD MD+HD Number": "Number of non-compromised,\n connected drones",
+                    "Attack Success Counter": '$\mathcal{N}_{AS}$',
+                    "Attack Launched Counter": "Number of attack launched\nin one episode"}
 
     # setting for figure
     font_size = 25  # 25
@@ -729,18 +791,29 @@ if __name__ == '__main__':
     # draw_all_scheme_sens_analysis_2("Ratio of Mission Completion", vary_time=True)
     # draw_all_scheme_sens_analysis_2("Energy Consumption", vary_time=True)
     # draw_all_scheme_sens_analysis_2("Attack Success Rate", vary_time=True)
+    # draw_all_scheme_sens_analysis_2("Mission Time (step)", vary_time=True)
+    # draw_all_scheme_sens_analysis_2("Average Connect_RLD MD+HD Number", vary_time=True)
+    # draw_all_scheme_sens_analysis_2("Attack Success Counter", vary_time=True)
+    # draw_all_scheme_sens_analysis_2("Attack Launched Counter", vary_time=True)
     # Varying attack budget
-    draw_all_scheme_sens_analysis_2("Ratio of Mission Completion", vary_time=False)
+    # draw_all_scheme_sens_analysis_2("Ratio of Mission Completion", vary_time=False)
     # draw_all_scheme_sens_analysis_2("Energy Consumption", vary_time=False)
     # draw_all_scheme_sens_analysis_2("Attack Success Rate", vary_time=False)
+    # draw_all_scheme_sens_analysis_2("Mission Time (step)", vary_time=False)
+    # draw_all_scheme_sens_analysis_2("Average Connect_RLD MD+HD Number", vary_time=False)
+    # draw_all_scheme_sens_analysis_2("Attack Success Counter", vary_time=False)
+    # draw_all_scheme_sens_analysis_2("Attack Launched Counter", vary_time=False)
 
     # Figure to show the Effect of Honey Drone
-    # draw_eight_scheme_bar("Ratio of Mission Completion")
-    # draw_eight_scheme_bar("Energy Consumption")
-    # draw_eight_scheme_bar("Attack Success Rate")
+    draw_eight_scheme_bar("Ratio of Mission Completion")
+    draw_eight_scheme_bar("Energy Consumption")
+    draw_eight_scheme_bar("Attack Success Rate")
+    # draw_eight_scheme_bar_2("Attack Success Counter")
 
     # Figure to the accumulated reward
-    # draw_accum_reward("Accumulated Reward Attacker")
-    # draw_accum_reward("Accumulated Reward Defender")
+    # draw_accum_reward("Accumulated Reward Attacker", scheme_name_set=["att", "DefAtt"])
+    # draw_accum_reward("Accumulated Reward Defender", scheme_name_set=["def", "DefAtt"])
+
+
 
 

@@ -256,7 +256,7 @@ if __name__ == '__main__':
     is_custom_env = True  # True means use the customized drone environment, False means use gym 'CartPole-v1'.
 
     # sensitivity analysis value
-    miss_dur = 30  # default: 30. Try to change from 10, 20, 30, 40 to 50
+    miss_dur = 60  # default: 30. Try to change from 10, 20, 30, 40 to 50
     max_att_budget = 5  # default: 5. The maximum number of attack can launch in a round
     num_HD = 2  # default: 2. The number of honey drone
 
