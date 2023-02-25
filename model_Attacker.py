@@ -123,7 +123,7 @@ class attacker_model(player_model):
             if drone.type == "MD":
                 # only attack not crashed drone
                 if random.uniform(0, 1) < self.attack_success_prob:
-                    print("attack success with probability:", self.attack_success_prob)
+                    # print("attack success with probability:", self.attack_success_prob)
                     if self.print: print("attack success:", drone)
                     drone.xyz[2] = 0
                     drone.xyz_temp[2] = 0
