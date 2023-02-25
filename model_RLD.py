@@ -14,4 +14,4 @@ class RLD_Drone(Drone):
         Drone.__init__(self, ID, update_freq)
         self.type = "RLD"
         self.xyz = np.zeros(3)
-        self.signal = -8 # TODO: this is a test
+        self.signal = -8

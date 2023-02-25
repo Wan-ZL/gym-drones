@@ -13,6 +13,7 @@ from utils import v_wrap, set_init, push_and_pull, record
 import torch.nn.functional as F
 import torch.multiprocessing as mp
 import gym
+import time
 import numpy as np
 
 from torch.utils.tensorboard import SummaryWriter
@@ -134,7 +135,7 @@ class ActorCritic(nn.Module):
 
 class Agent(mp.Process):
     def __init__(self, gnet_def, gnet_att, opt_def, opt_att, shared_dict, config_def, config_att, fixed_seed, trial,
-                 name_id: int, exp_scheme=0, player='def', exist_model=False, is_custom_env=True, miss_dur=30,
+                 name_id: int, exp_scheme=0, player='def', exist_model=False, is_custom_env=True, defense_strategy=0, miss_dur=30,
                  target_size=5, max_att_budget=5, num_HD=2):
         super(Agent, self).__init__()
         self.name_id = name_id
@@ -151,6 +152,7 @@ class Agent(mp.Process):
         self.lr_decay_att = config_att["LR_decay"]
         self.exist_model = exist_model
         self.is_custom_env = is_custom_env
+        self.defense_strategy = defense_strategy
         self.miss_dur = miss_dur
         self.target_size = target_size
         self.max_att_budget = max_att_budget
@@ -158,7 +160,7 @@ class Agent(mp.Process):
         self.num_HD = num_HD
         if is_custom_env:
             self.env = HyperGameSim(fixed_seed=fixed_seed, miss_dur=miss_dur, target_size=target_size,
-                                    max_att_budget=max_att_budget, num_HD=num_HD)
+                                    max_att_budget=max_att_budget, num_HD=num_HD, defense_strategy=self.defense_strategy)
             self.input_dims_def = self.env.observation_space['def'].shape[0]
             self.n_actions_def = self.env.action_space['def'].n
             self.input_dims_att = self.env.observation_space['att'].shape[0]
@@ -210,6 +212,8 @@ class Agent(mp.Process):
         return self.lr_decay_att ** epoch
 
     def run(self):
+        # get start time of this training (for all episodes)
+        train_start_time = time.time()
         # ======== Create Writer for TensorBoard ========
         # run 'tensorboard --logdir=runs' in terminal to start TensorBoard.
         if self.name_id == 0:
@@ -222,10 +226,10 @@ class Agent(mp.Process):
             if self.shared_dict["on_server"]:
                 # set path for server
                 path = "/home/zelin/Drone/data/" + str(self.miss_dur) + "_" + str(self.max_att_budget) + "_" + str(
-                    self.num_HD) + "/"
+                    self.num_HD) + "_" + str(self.defense_strategy) + "/"
             else:
                 # set path for my laptop
-                path = "data/" + str(self.miss_dur) + "_" + str(self.max_att_budget) + "_" + str(self.num_HD) + "/"
+                path = "data/" + str(self.miss_dur) + "_" + str(self.max_att_budget) + "_" + str(self.num_HD) + "_" + str(self.defense_strategy) + "/"
             writer = SummaryWriter(
                 log_dir=path + "runs_" + self.player + "/each_run_" + self.shared_dict["start_time"] + "-" +
                         self.player + "-" + "-Trial_" + trial_num_str + "-eps")
@@ -277,6 +281,8 @@ class Agent(mp.Process):
             score_def = 0
             total_step = 1
             done = False
+            # get the start time of this episode
+            start_time = time.time()
 
             while not done:
                 # run until environment end
@@ -293,6 +299,10 @@ class Agent(mp.Process):
                     action_att = self.lnet_att.choose_action(v_wrap(obs_att[None, :]))
                 else:  # A-random D-random
                     pass
+
+                # if use IDS, then the defender will choose fixed signal strength
+                if self.defense_strategy == 1:
+                    action_def = torch.tensor(4, dtype=torch.int64)
 
                 if self.is_custom_env:  # for Drone environment
                     # interaction with environment
@@ -381,9 +391,19 @@ class Agent(mp.Process):
                 if self.is_custom_env:
                     obs_att = obs_new_att
                 total_step += 1
+            # game done
 
             score_def_avg = score_def / total_step
             score_att_avg = score_att / total_step
+
+            # get the end time
+            end_time = time.time()
+            # calculate the total time taken in seconds
+            total_time = end_time - start_time
+            # calculate the total time taken for training
+            train_end_time = time.time()
+            total_time_taken = train_end_time - train_start_time
+
             # save data to shared dictionary for tensorboard
             with self.g_ep.get_lock():
                 self.g_ep.value += 1
@@ -416,6 +436,9 @@ class Agent(mp.Process):
                     sum(a_loss_set_att) / len(a_loss_set_att) if len(a_loss_set_att) else 0)
                 self.shared_dict['def_stra_count_writer'].put(def_stra_counter)
                 self.shared_dict['att_stra_count_writer'].put(att_stra_counter)
+                # put running time to shared dictionary
+                self.shared_dict['running_time_writer'].put(total_time)
+                self.shared_dict['running_time_taken_writer'].put(total_time_taken)
                 if self.is_custom_env:
                     self.shared_dict['att_succ_counter_writer'].put(
                         sum(att_succ_counter_set))  # the total number of success attack in one episode
@@ -450,6 +473,13 @@ class Agent(mp.Process):
                         sum(energy_HD_set) / len(energy_HD_set) if len(energy_HD_set) else 0)
                     self.shared_dict['energy_MD_writer'].put(
                         sum(energy_MD_set) / len(energy_MD_set) if len(energy_MD_set) else 0)
+                    # put recorded_max_RLD_down_time to shared dictionary
+                    self.shared_dict['recorded_max_RLD_down_time_writer'].put(info["recorded_max_RLD_down_time"])
+                    # put number of alive MD to shared dictionary
+                    self.shared_dict['alive_MD_num_writer'].put(info["alive_MD_num"])
+                    # put number of alive HD to shared dictionary
+                    self.shared_dict['alive_HD_num_writer'].put(info["alive_HD_num"])
+
 
             # ==== tensorboard writer ====
             # Only agent (index 0) can write to tensorboard
@@ -502,6 +532,11 @@ class Agent(mp.Process):
                     for i in range(10):
                         writer.add_scalar("Attacker Strategy (" + str(i) + ") Freq.", att_stra_counter[i], current_eps)
                     # write mission completion rate
+                    # write running time to tensorboard
+                    writer.add_scalar("Running Time (s)", self.shared_dict['running_time_writer'].get(), current_eps)
+                    # write running time taken to tensorboard
+                    writer.add_scalar("Total Running Time Taken (s)", self.shared_dict['running_time_taken_writer'].get(), current_eps)
+
                     if self.is_custom_env:
                         # write attack related data
                         writer.add_scalar("Attack Success Counter", self.shared_dict['att_succ_counter_writer'].get(), current_eps)
@@ -550,6 +585,12 @@ class Agent(mp.Process):
                         writer.add_scalar("Number of init MD", self.env.system.num_MD, current_eps)
                         writer.add_scalar("Number of init HD", self.env.system.num_HD, current_eps)
                         writer.add_scalar("Attacker's max_att_budget", self.env.attacker.max_att_budget, current_eps)
+                        # write recorded_max_RLD_down_time
+                        writer.add_scalar("Recorded Max RLD Down Time", self.shared_dict['recorded_max_RLD_down_time_writer'].get(), current_eps)
+                        # write alive_MD_num
+                        writer.add_scalar("Remaining Alive MD Number", self.shared_dict['alive_MD_num_writer'].get(), current_eps)
+                        # write alive_HD_num
+                        writer.add_scalar("Remaining Alive HD Number", self.shared_dict['alive_HD_num_writer'].get(), current_eps)
 
                     ep_counter += 1
 

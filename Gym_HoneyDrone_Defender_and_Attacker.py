@@ -23,12 +23,6 @@ import torch.optim as optim
 import torch.nn.functional as F
 # import torchvision.transforms as T
 
-from model_System import system_model
-from model_Defender import defender_model
-from model_Attacker import attacker_model
-from multiprocessing import cpu_count
-from multiprocessing import Process
-
 import time
 import argparse
 import pybullet as p
@@ -55,7 +49,7 @@ ObsType = TypeVar("ObsType")
 
 
 class HyperGameSim(Env):
-    def __init__(self, fixed_seed=True, miss_dur=30, target_size=5, max_att_budget=5, num_HD=2):
+    def __init__(self, fixed_seed=True, miss_dur=30, target_size=5, max_att_budget=5, num_HD=2, defense_strategy=0):
         # variable for bullet drone env
         self.print = False
         self.gui = False
@@ -72,7 +66,7 @@ class HyperGameSim(Env):
         self.START = None
         self.ARGS = None
         self.start_time = None
-        self.initDroneEnv(miss_dur, target_size, max_att_budget, num_HD)
+        self.initDroneEnv(miss_dur, target_size, max_att_budget, num_HD, defense_strategy)
         self.close_env()  # close client in init for avoiding client limit error
 
         # variable for current env
@@ -81,6 +75,7 @@ class HyperGameSim(Env):
         self.target_size = target_size
         self.max_att_budget = max_att_budget
         self.num_HD = num_HD
+        self.defense_strategy = defense_strategy
         self.action_space = dict()
         self.action_space['def'] = Discrete(self.defender.number_of_strategy)
         self.action_space['att'] = Discrete(self.attacker.number_of_strategy)
@@ -151,11 +146,11 @@ class HyperGameSim(Env):
 
         return state
 
-    def initDroneEnv(self, miss_dur=30, target_size=5, max_att_budget=5, num_HD=2):
+    def initDroneEnv(self, miss_dur=30, target_size=5, max_att_budget=5, num_HD=2, defense_strategy=0):
         # create model class
         self.system = system_model(mission_duration_max=miss_dur, map_cell_number=target_size, num_HD=num_HD)
         self.defender = defender_model(self.system)
-        self.attacker = attacker_model(self.system, max_att_budget)
+        self.attacker = attacker_model(self.system, max_att_budget, defense_strategy)
 
         if self.print: print("attacker locaiton", self.attacker.xyz)
 
@@ -390,6 +385,10 @@ class HyperGameSim(Env):
         info["remaining_time"] = 1 - (self.system.mission_duration / self.system.mission_duration_max)
         info["energy_HD"] = energy_HD
         info["energy_MD"] = energy_MD
+        info["recorded_max_RLD_down_time"] = self.system.recorded_max_RLD_down_time
+        info["alive_MD_num"] = self.system.aliveMDcount()
+        info["alive_HD_num"] = self.system.aliveHDcount()
+
         return state, reward, done, info
 
     def roundBegin(self, action_def, action_att):
@@ -482,7 +481,6 @@ class HyperGameSim(Env):
 
     def render(self, *args):
         pass
-
 
 
     def updateTempLoca(self, drone_set, control_freq_hz: int):

@@ -26,6 +26,9 @@ class system_model:
         self.recalc_trajectory = False  # True: need recalculate trajectory.
         self.num_MD = 5 # number of MD (in index, MD first then HD)
         self.num_HD = num_HD # 2 # number of HD
+        self.crashed_RLD_counter = 0
+        self.RLD_down_time = 0  # 0 means RLD is not down. unit: round
+        self.recorded_max_RLD_down_time = self.RLD_down_time
         self.MD_dict = {}  # key is id, value is class detail
         self.HD_dict = {}
         self.Drone_dict = {}
@@ -119,6 +122,12 @@ class system_model:
 
     # scan count, and check if crashed
     def MD_environment_interaction(self, obs):
+        # when RLD is down, MD cannot scan
+        if self.RLD_down_time > 0:
+            self.recorded_max_RLD_down_time = max(self.recorded_max_RLD_down_time, self.RLD_down_time)
+            self.RLD_down_time -= 1
+            return
+
         for MD in self.MD_set:
             if MD.crashed:
                 continue
@@ -277,12 +286,17 @@ class system_model:
         return res
 
 
-
     def sample_MD(self):
         return Mission_Drone(-1, self.update_freq)
 
     def aliveDroneCount(self):
         return len(self.MD_set) + len(self.HD_set)
+
+    def aliveMDcount(self):
+        return len(self.MD_set)
+
+    def aliveHDcount(self):
+        return len(self.HD_set)
 
     @property
     def sample_HD(self):

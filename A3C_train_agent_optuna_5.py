@@ -25,7 +25,7 @@ from Gym_HoneyDrone_Defender_and_Attacker import HyperGameSim
 
 
 def objective(trial, fixed_seed=True, on_server=True, exist_model=False, exp_scheme=0, player_name='def',
-              is_custom_env=True, miss_dur=30, target_size=5, max_att_budget=5, num_HD=2):
+              is_custom_env=True, defense_strategy=0, miss_dur=30, target_size=5, max_att_budget=5, num_HD=2):
     start_time = time.time()
 
     if trial is not None:
@@ -167,10 +167,16 @@ def objective(trial, fixed_seed=True, on_server=True, exist_model=False, exp_sch
     shared_dict['MDHD_connect_RLD_num_writer'] = mp.Queue()  #
     shared_dict['MDHD_connect_RLD_num_writer'] = mp.Queue()
     shared_dict['mission_complete_rate_writer'] = mp.Queue()
-    shared_dict['remaining_time_writer'] = mp.Queue()
+    shared_dict['remaining_time_writer'] = mp.Queue() # remaining round of the game
     shared_dict['energy_HD_writer'] = mp.Queue()
     shared_dict['energy_MD_writer'] = mp.Queue()
+    shared_dict['running_time_writer'] = mp.Queue()
+    shared_dict['running_time_taken_writer'] = mp.Queue()
+    shared_dict['recorded_max_RLD_down_time_writer'] = mp.Queue()
+    shared_dict['alive_MD_num_writer'] = mp.Queue()
+    shared_dict['alive_HD_num_writer'] = mp.Queue()
     shared_dict['on_server'] = on_server
+
 
     # global_ep_r = mp.Value('d', 0.)
 
@@ -187,7 +193,7 @@ def objective(trial, fixed_seed=True, on_server=True, exist_model=False, exp_sch
     workers = [Agent(glob_AC_def, glob_AC_att, optim_def, optim_att, shared_dict=shared_dict, config_def=config_def,
                      config_att=config_att, fixed_seed=fixed_seed, trial=trial,
                      name_id=i, exp_scheme=exp_scheme, player=player_name, exist_model=exist_model,
-                     is_custom_env=is_custom_env, miss_dur=miss_dur,
+                     is_custom_env=is_custom_env, defense_strategy=defense_strategy, miss_dur=miss_dur,
                      target_size=target_size, max_att_budget=max_att_budget, num_HD=num_HD) for i in range(num_worker)]
 
     [w.start() for w in workers]
@@ -203,10 +209,10 @@ def objective(trial, fixed_seed=True, on_server=True, exist_model=False, exp_sch
     # run 'tensorboard --logdir=runs' in terminal to start TensorBoard.
     if on_server:
         path = "/home/zelin/Drone/data/" + str(miss_dur) + "_" + str(max_att_budget) + "_" + str(
-            num_HD) + "/" + player_name + "/"
+            num_HD)  + "_" + str(defense_strategy) + "/" + player_name + "/"
     else:
         path = "/Users/wanzelin/办公/gym-drones/data/" + str(miss_dur) + "_" + str(max_att_budget) + "_" + str(
-            num_HD) + "/" + player_name + "/"
+            num_HD)  + "_" + str(defense_strategy) + "/" + player_name + "/"
     os.makedirs(path + "model", exist_ok=True)
     torch.save(glob_AC_def.state_dict(),
                path + "model/trained_A3C_" + str(start_time) + "_" + player_name + "_Trial_" + trial_num_str)
@@ -233,9 +239,9 @@ def objective(trial, fixed_seed=True, on_server=True, exist_model=False, exp_sch
             # simply write down
             temp_config[key] = value
     if on_server:
-        path = "/home/zelin/Drone/data/" + str(miss_dur) + "_" + str(max_att_budget) + "_" + str(num_HD) + "/"
+        path = "/home/zelin/Drone/data/" + str(miss_dur) + "_" + str(max_att_budget) + "_" + str(num_HD) + "_" + str(defense_strategy) + "/"
     else:
-        path = "data/" + str(miss_dur) + "_" + str(max_att_budget) + "_" + str(num_HD) + "/"
+        path = "data/" + str(miss_dur) + "_" + str(max_att_budget) + "_" + str(num_HD) + "_" + str(defense_strategy) + "/"
     writer_hparam = SummaryWriter(
         log_dir=path + "runs_" + player_name + "/each_run_" + str(start_time) + "-" + player_name +
                 "-Trial_" + trial_num_str + "-hparm")
@@ -256,13 +262,19 @@ if __name__ == '__main__':
     is_custom_env = True  # True means use the customized drone environment, False means use gym 'CartPole-v1'.
 
     # sensitivity analysis value
-    miss_dur = 60  # default: 30. Try to change from 10, 20, 30, 40 to 50
+    miss_dur = 30  # default: 30. Try to change from 10, 20, 30, 40 to 50
     max_att_budget = 5  # default: 5. The maximum number of attack can launch in a round
     num_HD = 2  # default: 2. The number of honey drone
 
     test_mode_run_time = 50
 
     target_size = 5  # default: 5. The 'Number of Cell to Scan' = 'target_size' * 'target_size'
+
+    defense_strategy = 0 # default: 0. The 0 means HD with dynamic signal, 1 means IDS with static signal
+
+    # if use IDS, then the number of HD should be 0
+    if defense_strategy == 1:
+        num_HD = 0
 
     if exp_scheme == 0:
         player_name = 'def'
@@ -296,13 +308,13 @@ if __name__ == '__main__':
         print("testing mode")
         for _ in range(test_mode_run_time):
             objective(None, fixed_seed=fixed_seed, on_server=on_server, exist_model=exist_model, exp_scheme=exp_scheme,
-                      player_name=player_name, is_custom_env=is_custom_env, miss_dur=miss_dur, target_size=target_size,
+                      player_name=player_name, is_custom_env=is_custom_env, defense_strategy=defense_strategy, miss_dur=miss_dur, target_size=target_size,
                       max_att_budget=max_att_budget, num_HD=num_HD)
     else:
         print("training mode")
         if on_server:
             db_path = "/home/zelin/Drone/data/" + str(miss_dur) + "_" + str(max_att_budget) + "_" + str(
-                num_HD) + "/" + player_name + "/"
+                num_HD) + "_" + str(defense_strategy) + "/" + player_name + "/"
             os.makedirs(db_path, exist_ok=True)
             study = optuna.create_study(direction='maximize', study_name="A3C-hyperparameter-study",
                                         storage="sqlite://///" + db_path + "HyperPara_database_sche-" + str(
@@ -310,12 +322,12 @@ if __name__ == '__main__':
                                         load_if_exists=True)
         else:
             db_path = "/Users/wanzelin/办公/gym-drones/data/" + str(miss_dur) + "_" + str(max_att_budget) + "_" + str(
-                num_HD) + "/" + player_name + "/"
+                num_HD) + "_" + str(defense_strategy) + "/" + player_name + "/"
             os.makedirs(db_path, exist_ok=True)
             study = optuna.create_study(direction='maximize', study_name="A3C-hyperparameter-study",
                                         storage="sqlite:////" + db_path + "HyperPara_database_sche-" + str(
                                             exp_scheme) + ".db",
                                         load_if_exists=True)
         study.optimize(
-            lambda trial: objective(trial, fixed_seed, on_server, exist_model, exp_scheme, player_name, is_custom_env,
+            lambda trial: objective(trial, fixed_seed, on_server, exist_model, exp_scheme, player_name, is_custom_env, defense_strategy,
                                     miss_dur, target_size, max_att_budget, num_HD), n_trials=50)

@@ -4,7 +4,7 @@ import numpy as np
 from collections import defaultdict
 
 class attacker_model(player_model):
-    def __init__(self, system, max_att_budget=5):
+    def __init__(self, system, max_att_budget=5, defense_strategy=0):
         player_model.__init__(self, system)
         # randomly set to target area when create
         self.xyz = np.array([int(system.map_size/2) ,int(system.map_size/2), 0]) #np.array([random.randrange(1,system.map_cell_number+1), random.randrange(1,system.map_cell_number+1), 0])
@@ -24,9 +24,13 @@ class attacker_model(player_model):
         self.target_set = []
         self.epsilon = 0.5                      # variable used in determine target range
         self.attack_success_prob = 0.43          # attack success rate of each attack on each drone  # use CVSS from android device https://www.cvedetails.com/cve/CVE-2021-39804/
+        self.attack_RLD_prob = 0.0001           # attack success rate of RLD
         self.att_counter = 0    # number of attack launched in a round
         self.att_succ_counter = 0  # count the number of drone compromised in a round
         self.max_att_budget = max_att_budget     # the maximum number of attack can launch in a round
+        self.defense_strategy = defense_strategy # the strategy used by defender to defend against attacker (0: HD+dynamic signal, 1: IDS+static signal)
+        if self.defense_strategy == 1:
+            self.attack_success_prob = self.attack_success_prob * 0.9  # IDS can reduce attack success rate by 10%
 
     def signal2strategy(self, obs_signal):
         conditions = lambda x: {
@@ -48,7 +52,9 @@ class attacker_model(player_model):
         #     20 < x: -1
         # }
 
+        # observe signal strength of all drones in the system
         distance_dict = {}
+        # observe MD
         for MD in self.system.MD_mission_set:   # only consider MD in mission and not crashed
             distance = self.system.calc_distance(self.xyz, MD.xyz_temp)
             distance_dict[MD.ID] = distance
@@ -56,6 +62,7 @@ class attacker_model(player_model):
             self.obs_sig_dict[MD.ID] = obs_signal
             strategy_index = self.signal2strategy(obs_signal)
             self.S_target_dict[strategy_index] = self.S_target_dict[strategy_index] + [MD]
+        # observe HD
         for HD in self.system.HD_mission_set:         # we consider crashed drone here
             distance = self.system.calc_distance(self.xyz, HD.xyz_temp)
             distance_dict[HD.ID] = distance
@@ -63,6 +70,14 @@ class attacker_model(player_model):
             self.obs_sig_dict[HD.ID] = obs_signal
             strategy_index = self.signal2strategy(obs_signal)
             self.S_target_dict[strategy_index] = self.S_target_dict[strategy_index] + [HD]
+        # observe RLD
+        distance = self.system.calc_distance(self.xyz, self.system.RLD.xyz_temp)
+        distance_dict[self.system.RLD.ID] = distance
+        obs_signal = self.system.observed_signal(self.system.RLD.signal, distance)
+        self.obs_sig_dict[self.system.RLD.ID] = obs_signal
+        strategy_index = self.signal2strategy(obs_signal)
+        self.S_target_dict[strategy_index] = self.S_target_dict[strategy_index] + [self.system.RLD]
+
 
         if self.print: print("attacker observed:", self.obs_sig_dict)
         if self.print: print("attacker obs distance:", distance_dict)      # TODO: check if distance-signal function are correct
@@ -90,9 +105,6 @@ class attacker_model(player_model):
         return ai
 
 
-    # def select_strategy(self, new_strategy):
-    #     self.strategy = 8
-
     def action(self):
         # return: number of drone compromised in one action
         if self.print: print("attacker strategy:", self.strategy, "signal", self.strategy2signal_set[self.strategy])
@@ -107,13 +119,30 @@ class attacker_model(player_model):
         for drone in target_set:
             if self.print: print("attacking", drone.ID, drone.type)
             self.att_counter += 1
-            # only attack not crashed drone
-            if random.uniform(0,1) < self.attack_success_prob:
-                if self.print: print("attack success:", drone)
-                drone.xyz[2] = 0
-                drone.xyz_temp[2] = 0
-                drone.crashed = True
-                self.att_succ_counter += 1
+            # attack MD
+            if drone.type == "MD":
+                # only attack not crashed drone
+                if random.uniform(0, 1) < self.attack_success_prob:
+                    print("attack success with probability:", self.attack_success_prob)
+                    if self.print: print("attack success:", drone)
+                    drone.xyz[2] = 0
+                    drone.xyz_temp[2] = 0
+                    drone.crashed = True
+                    self.att_succ_counter += 1
+            # attack RLD
+            elif drone.type == "RLD":
+                if random.uniform(0, 1) < self.attack_RLD_prob:
+                    if self.print: print("attack success:", drone)
+                    self.system.crashed_RLD_counter += 1
+                    self.system.RLD_down_time = 5
+                    self.att_succ_counter += 1
+            # attack HD
+            else:
+                # HD won't be compromised
+                pass
+
+
+
 
 
 
