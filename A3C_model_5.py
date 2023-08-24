@@ -301,8 +301,8 @@ class Agent(mp.Process):
                     pass
 
                 # if use IDS, then the defender will choose fixed signal strength
-                if self.defense_strategy == 1:
-                    action_def = torch.tensor(4, dtype=torch.int64)
+                if self.defense_strategy == 1 or self.defense_strategy == 2 or self.defense_strategy == 3:
+                    action_def = torch.tensor(3, dtype=torch.int64)
 
                 if self.is_custom_env:  # for Drone environment
                     # interaction with environment

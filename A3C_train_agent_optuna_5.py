@@ -262,18 +262,18 @@ if __name__ == '__main__':
     is_custom_env = True  # True means use the customized drone environment, False means use gym 'CartPole-v1'.
 
     # sensitivity analysis value
-    miss_dur = 30  # default: 30. Try to change from 10, 20, 30, 40 to 50
+    miss_dur = 10  # default: 30. Try to change from 10, 20, 30, 40 to 50
     max_att_budget = 5  # default: 5. The maximum number of attack can launch in a round
     num_HD = 2  # default: 2. The number of honey drone
 
-    test_mode_run_time = 50
+    test_mode_run_time = 100
 
     target_size = 5  # default: 5. The 'Number of Cell to Scan' = 'target_size' * 'target_size'
 
-    defense_strategy = 0 # default: 0. The 0 means HD with dynamic signal, 1 means IDS with static signal
+    defense_strategy = 0 # default: 0. The 0 means HD with dynamic signal, 1 means IDS with static signal, 2 means container drone (CD) with static signal, 3 means no defense.
 
     # if use IDS, then the number of HD should be 0
-    if defense_strategy == 1:
+    if defense_strategy == 1 or defense_strategy == 2 or defense_strategy == 3:
         num_HD = 0
 
     if exp_scheme == 0:

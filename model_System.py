@@ -143,10 +143,18 @@ class system_model:
             map_y_index = round(cell_y - 1)     # minus 1 for ignoring GCS
             # map_size_with_station = self.map_size + 1
 
-            # if drone in target area
-            if map_x_index in range(self.map_size) and map_y_index in range(self.map_size):
-                if MD.connect_RLD:          # scan only happen when connected to RLD.
-                    self.scan_map[map_x_index, map_y_index] += 0.01
+            # if drone's memory not full, it can scan
+            if not MD.memory_full:
+                # if drone in target area
+                if map_x_index in range(self.map_size) and map_y_index in range(self.map_size):
+                    if MD.connect_RLD:          # scan only happen when connected to RLD.
+                        self.scan_map[map_x_index, map_y_index] += 0.01
+            else:
+                # if drone's memory full. It cannot scan anymore.
+                # reset memory_full flag
+                MD.memory_full = False
+
+
                 # self.update_scan(map_x_index, map_y_index, 0.01)
             # else:
             #     print_debug("out of Mape range")

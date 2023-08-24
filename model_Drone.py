@@ -28,6 +28,7 @@ class Drone:
         self.neighbor_table = {}  # key: drone ID, value: True means connected to this neighbor, False means not connected.
         self.connect_RLD = True # True means connected to RLD, False means disconnected from RLD.
         self.visited = False    # design for DFS search
+        self.memory_full = False    # design for container drone (CD)
 
     # def battery_update(self):       # consume energy or charging (True means drone is ready (recalculate trajectory))
     #     if not self.charging and not self.crashed:

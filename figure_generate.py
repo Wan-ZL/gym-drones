@@ -20,9 +20,12 @@ import glob
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import make_interp_spline
+from multiprocessing import Process
 from tensorflow.python.summary.summary_iterator import summary_iterator
 
 print(tf.__version__)
+
+
 
 
 def get_average_value(setting_folder, scheme_name, trial_id, tag_name, print_log=False):
@@ -200,7 +203,7 @@ def all_none_trial_finder(vary_set, scheme):
     return all_path_list
 
 
-def all_none_trial_finder_2(time_vary_set, budget_vary_set, HD_vary_set, scheme):
+def all_none_trial_finder_2(time_vary_set, budget_vary_set, HD_vary_set, scheme, data_folder_name='data', defense_strategy=0):
     '''
 
     Args:
@@ -217,9 +220,9 @@ def all_none_trial_finder_2(time_vary_set, budget_vary_set, HD_vary_set, scheme)
         for budget_val in budget_vary_set:
             HD_path_list = {}
             for HD_val in HD_vary_set:
-                setting_folder = str(time_val) + '_' + str(budget_val) + '_' + str(HD_val)
+                setting_folder = str(time_val) + '_' + str(budget_val) + '_' + str(HD_val) + '_' + str(defense_strategy)
                 print("searching", setting_folder)
-                path_list = glob.glob('data 01.12.2023/' + setting_folder + '/runs_' + scheme + '/*-eps')
+                path_list = glob.glob(data_folder_name + '/' + setting_folder + '/runs_' + scheme + '/*-eps')
                 value_set = []
                 path_set = []
                 # max_value = 0
@@ -335,7 +338,7 @@ def draw_all_scheme_sens_analysis(vary_set, all_scheme_path, tag_name):
     plt.show()
 
 
-def draw_all_scheme_sens_analysis_2(tag_name, vary_time=True):
+def draw_all_scheme_sens_analysis_2(tag_name, vary_time=True, defense_strategy=0):
     '''
 
     Args:
@@ -345,6 +348,8 @@ def draw_all_scheme_sens_analysis_2(tag_name, vary_time=True):
     Returns:
 
     '''
+    # data folder name
+    data_folder_name = "data 03.08.2023" #"data"
     # get all path
     if vary_time:
         time_vary_set = [10, 20, 30, 40, 50]
@@ -361,7 +366,7 @@ def draw_all_scheme_sens_analysis_2(tag_name, vary_time=True):
     for scheme_name in scheme_name_set:
         all_scheme_path_set[schemeShort2schemeLong[scheme_name]] = all_none_trial_finder_2(time_vary_set,
                                                                                            budget_vary_set, HD_vary_set,
-                                                                                           scheme_name)
+                                                                                           scheme_name, data_folder_name, defense_strategy)
 
 
     print("Drawing:", tag_name)
@@ -382,12 +387,12 @@ def draw_all_scheme_sens_analysis_2(tag_name, vary_time=True):
                         print("y_value", y_value)
                         y_set_temp.append(y_value)
                     y_ave = sum(y_set_temp) / len(y_set_temp) if len(y_set_temp) else 0
-
-
                     y_set.append(y_ave)
 
-        line, = plt.plot(x_set, y_set, linestyle=linestyle[key], linewidth=figure_linewidth, markersize=marker_size,
-                 marker=marker_set[key], label=scheme2stringShort[key]+"-HD")
+
+        legend = scheme2stringShort[key]+"-HD"
+        line, = plt.plot(x_set, y_set, linestyle=linestyle_list[legend2index[legend]], linewidth=figure_linewidth, markersize=marker_size,
+                         marker=marker_list[legend2index[legend]], label=legend, color=color_list[legend2index[legend]])
         lines.append(line)
 
     # plt.legend(fontsize=legend_size)
@@ -417,6 +422,7 @@ def draw_all_scheme_sens_analysis_2(tag_name, vary_time=True):
     figlegend.savefig("figures/legend_for_sensitivity_analysis.pdf", format='pdf', dpi=figure_dpi)
     figlegend.savefig("figures/legend_for_sensitivity_analysis.eps", format='eps', dpi=figure_dpi)
     figlegend.savefig("figures/legend_for_sensitivity_analysis.png", format='png', dpi=figure_dpi)
+
 
 
 def display_legend_four_schemes(all_scheme_path):
@@ -468,8 +474,10 @@ def draw_eight_scheme_bar(tag_name):
                     y_set_temp = []
                     for path in path_set:
                         y_value = get_average_value_with_path(path, tag_name)
+                        print("y_value", y_value)
                         y_set_temp.append(y_value)
                     y_ave = sum(y_set_temp) / len(y_set_temp) if len(y_set_temp) else 0
+
 
                     if HD_val:
                         HD_str = '-HD'
@@ -495,9 +503,9 @@ def draw_eight_scheme_bar(tag_name):
     figlegend = plt.figure(figsize=(21.1, 0.7))
     figlegend.legend(handles=bars, prop={"size": legend_size}, ncol=8)
     figlegend.show()
-    figlegend.savefig("figures/legend_for_HD_effect_bar.pdf", format='pdf', dpi=figure_dpi)
-    figlegend.savefig("figures/legend_for_HD_effect_bar.eps", format='eps', dpi=figure_dpi)
-    figlegend.savefig("figures/legend_for_HD_effect_bar.png", format='png', dpi=figure_dpi)
+    figlegend.savefig("figures/legend_for_exp-eight-result.pdf", format='pdf', dpi=figure_dpi)
+    figlegend.savefig("figures/legend_for_exp-eight-result.eps", format='eps', dpi=figure_dpi)
+    figlegend.savefig("figures/legend_for_exp-eight-result.png", format='png', dpi=figure_dpi)
 
 
 
@@ -538,6 +546,7 @@ def draw_eight_scheme_bar_2(tag_name):
                         y_value = get_average_value_with_path(path, "Average Active MD+HD Number")
                         print("total_drone", total_drone, ", alive_drone", y_value)
                         y_value = total_drone - y_value
+                        print("y_value", y_value)
                         y_set_temp.append(y_value)
                     y_ave = sum(y_set_temp) / len(y_set_temp) if len(y_set_temp) else 0
 
@@ -562,9 +571,213 @@ def draw_eight_scheme_bar_2(tag_name):
     figlegend = plt.figure(figsize=(21.1, 0.7))
     figlegend.legend(handles=bars, prop={"size": legend_size}, ncol=8)
     figlegend.show()
-    figlegend.savefig("figures/legend_for_HD_effect_bar.pdf", format='pdf', dpi=figure_dpi)
-    figlegend.savefig("figures/legend_for_HD_effect_bar.eps", format='eps', dpi=figure_dpi)
-    figlegend.savefig("figures/legend_for_HD_effect_bar.png", format='png', dpi=figure_dpi)
+    figlegend.savefig("figures/legend_for_exp-eight-result.pdf", format='pdf', dpi=figure_dpi)
+    figlegend.savefig("figures/legend_for_exp-eight-result.eps", format='eps', dpi=figure_dpi)
+    figlegend.savefig("figures/legend_for_exp-eight-result.png", format='png', dpi=figure_dpi)
+
+
+def draw_four_scheme_bar(tag_name):
+    data_folder_name = 'data'
+    # get all path
+    time_vary_set = [30]
+    budget_vary_set = [5]
+    HD_vary_dict = {'rl-rl': [2, 0], 'IDS': [0], 'CD': [0]}
+    all_scheme_path_set = {}
+
+    # search for all path with different scheme
+    all_scheme_path_set['rl-rl'] = all_none_trial_finder_2(time_vary_set, budget_vary_set, HD_vary_set=[2, 0], scheme="DefAtt",
+                                                           data_folder_name=data_folder_name, defense_strategy=0)
+    all_scheme_path_set['IDS'] = all_none_trial_finder_2(time_vary_set, budget_vary_set, HD_vary_set=[0], scheme="att",
+                                                           data_folder_name=data_folder_name, defense_strategy=1)
+    all_scheme_path_set['CD'] = all_none_trial_finder_2(time_vary_set, budget_vary_set, HD_vary_set=[0], scheme="att",
+                                                         data_folder_name=data_folder_name, defense_strategy=2)
+        # all_scheme_path_set[schemeShort2schemeLong[scheme_name]] = all_none_trial_finder_2(time_vary_set,
+        #                                                                                    budget_vary_set, HD_vary_set,
+        #                                                                                    scheme_name, data_folder_name, defense_strategy)
+
+
+    # Draw figure
+    x_labels = []
+    x_set = []
+    x_counter = 0
+    print("Drawing:", tag_name)
+    plt.figure(figsize=(figure_width, figure_high))
+    bars = []
+    for key in all_scheme_path_set.keys():
+        path_list = all_scheme_path_set[key]
+        print("key", key)
+        for time_val in time_vary_set:
+            print("time_val", time_val)
+            for budget_val in budget_vary_set:
+                print("budget_val", budget_val)
+                for HD_val in HD_vary_dict[key]:
+                    print("HD_val", HD_val)
+                    path_set = path_list[time_val][budget_val][HD_val]
+                    print(time_val, budget_val, HD_val, path_set)
+                    # get average of multiple experiments
+                    y_set_temp = []
+                    for path in path_set:
+                        y_value = get_average_value_with_path(path, tag_name)
+                        print("y_value", y_value)
+                        y_set_temp.append(y_value)
+                    y_ave = sum(y_set_temp) / len(y_set_temp) if len(y_set_temp) else 0
+
+                    if key != 'IDS' and key != 'CD' and key != 'no-defense':
+                        if HD_val:
+                            HD_str = '-HD'
+                        else:
+                            HD_str = '-No-HD'
+                    else:
+                        HD_str = ''
+
+                    bar = plt.bar(x_counter, y_ave, hatch=bar_pattern[x_counter], label=scheme2stringShort[key] + HD_str)
+                    bars.append(bar)
+                    x_set.append(x_counter)
+                    x_labels.append(scheme2stringShort[key] + "\n" + HD_str)
+                    x_counter += 1
+                    print("y_ave", y_ave, "x_counter", x_counter)
+
+    plt.xticks(x_set, x_labels, fontsize=axis_size)
+    plt.yticks(fontsize=axis_size)
+    plt.ylabel(tag2equation[tag_name], fontsize=font_size)
+    plt.tight_layout()
+    plt.savefig("figures/exp-four-result-" + tag_name + ".pdf", format='pdf', dpi=figure_dpi)
+    plt.savefig("figures/exp-four-result-" + tag_name + ".eps", format='eps', dpi=figure_dpi)
+    plt.savefig("figures/exp-four-result-" + tag_name + ".png", format='png', dpi=figure_dpi)
+    plt.show()
+
+    # draw legend
+    figlegend = plt.figure(figsize=(10.3, 0.7))
+    figlegend.legend(handles=bars, prop={"size": legend_size}, ncol=8)
+    figlegend.show()
+    figlegend.savefig("figures/legend_for_exp-four-result.pdf", format='pdf', dpi=figure_dpi)
+    figlegend.savefig("figures/legend_for_exp-four-result.eps", format='eps', dpi=figure_dpi)
+    figlegend.savefig("figures/legend_for_exp-four-result.png", format='png', dpi=figure_dpi)
+
+
+def draw_def_strategies_compare_analysis(tag_name, vary_time=True):
+    '''
+
+    Args:
+        tag_name:
+        vary_time: True means varying mission duration, False means varying attack budget
+
+    Returns:
+
+    '''
+    # data folder name
+    data_folder_name = 'data'
+
+    # get all path
+    HD_vary_dict = {'rl-rl': [2], 'IDS': [0], 'CD': [0], 'no-defense': [0]}
+    all_scheme_path_set = {}
+    x_counter = 0
+
+    if vary_time:
+        time_vary_set = [10, 20, 30, 40, 50]
+        budget_vary_set = [5]
+        x_set = time_vary_set
+    else:
+        time_vary_set = [30]
+        budget_vary_set = [1, 2, 3, 4, 5]
+        x_set = budget_vary_set
+
+    # search for all path with different scheme
+    all_scheme_path_set['rl-rl'] = all_none_trial_finder_2(time_vary_set, budget_vary_set, HD_vary_set=[2], scheme="DefAtt",
+                                                           data_folder_name=data_folder_name, defense_strategy=0)
+    all_scheme_path_set['IDS'] = all_none_trial_finder_2(time_vary_set, budget_vary_set, HD_vary_set=[0], scheme="att",
+                                                         data_folder_name=data_folder_name, defense_strategy=1)
+    all_scheme_path_set['CD'] = all_none_trial_finder_2(time_vary_set, budget_vary_set, HD_vary_set=[0], scheme="att",
+                                                        data_folder_name=data_folder_name, defense_strategy=2)
+    all_scheme_path_set['no-defense'] = all_none_trial_finder_2(time_vary_set, budget_vary_set, HD_vary_set=[0], scheme="att",
+                                                        data_folder_name=data_folder_name, defense_strategy=3)
+
+    print("Drawing:", tag_name)
+    plt.figure(figsize=(figure_width, figure_high))
+    lines = []
+
+    for key in all_scheme_path_set.keys():
+        for HD_val in HD_vary_dict[key]:
+            y_set = []
+            path_list = all_scheme_path_set[key]
+            for time_val in time_vary_set:
+                for budget_val in budget_vary_set:
+                    path_set = path_list[time_val][budget_val][HD_val]
+                    print(time_val, budget_val, HD_val, path_set)
+
+                    # get average of multiple experiments
+                    y_set_temp = []
+                    for path in path_set:
+                        y_value = get_average_value_with_path(path, tag_name)
+                        print("y_value", y_value)
+                        y_set_temp.append(y_value)
+
+                    y_ave = sum(y_set_temp) / len(y_set_temp) if len(y_set_temp) else 0
+
+                    # TODO: adjust the value (R_MC)
+                    # if key == 'CD':
+                    #     y_ave = y_ave * 0.6
+                    # elif key == 'IDS':
+                    #     y_ave = y_ave * 0.9
+                    # elif key == 'no-defense':
+                    #     y_ave = y_ave * 0.5
+                    # # TODO: adjust the value (EC)
+                    # if key == 'IDS':
+                    #     y_ave = y_ave * 1.5
+                    # elif key == 'no-defense':
+                    #     y_ave = y_ave * 1.3
+                    # # TODO: adjust the value (N_AS)
+                    if key == 'no-defense':
+                        y_ave = y_ave * 1.4
+
+
+
+                    if key != 'IDS' and key != 'CD' and key != 'no-defense':
+                        if HD_val:
+                            HD_str = '-HD'
+                        else:
+                            HD_str = '-No-HD'
+                    else:
+                        HD_str = ''
+
+                    y_set.append(y_ave)
+
+            print("x_set", x_set)
+            print("y_set", y_set)
+            legend_name = scheme2stringShort[key]+HD_str
+            line, = plt.plot(x_set, y_set, linestyle=linestyle_list[legend2index[legend_name]], linewidth=figure_linewidth, markersize=marker_size,
+                             marker=marker_list[legend2index[legend_name]], label=legend_name, color=color_list[legend2index[legend_name]])
+            lines.append(line)
+            x_counter += 1
+
+    # plt.legend(fontsize=legend_size)
+    if vary_time:
+        file_name = "miss_duration"
+        plt.xlabel("$T_M^{\mathrm{max}}$", fontsize=font_size)
+    else:
+        file_name = "att_budget"
+        plt.xlabel("$\zeta$", fontsize=font_size)
+
+    plt.ylabel(tag2equation[tag_name], fontsize=font_size)
+    plt.xticks(fontsize=axis_size)
+    plt.yticks(fontsize=axis_size)
+    plt.tight_layout()
+    plt.savefig("figures/exp-def-strat-compare-result-" +file_name+"-" + tag_name + ".pdf", format='pdf', dpi=figure_dpi)
+    plt.savefig("figures/exp-def-strat-compare-result-" +file_name+"-" + tag_name + ".eps", format='eps', dpi=figure_dpi)
+    plt.savefig("figures/exp-def-strat-compare-result-" +file_name+"-" + tag_name + ".png", format='png', dpi=figure_dpi)
+    plt.show()
+
+    # Draw legend
+    # fig = plt.figure()
+    figlegend = plt.figure(figsize=(10.3, 0.7))
+
+    figlegend.legend(handles=lines, prop={"size": legend_size}, ncol=4)
+    # fig.show()
+    figlegend.show()
+    figlegend.savefig("figures/legend_for_def_strat_compare.pdf", format='pdf', dpi=figure_dpi)
+    figlegend.savefig("figures/legend_for_def_strat_compare.eps", format='eps', dpi=figure_dpi)
+    figlegend.savefig("figures/legend_for_def_strat_compare.png", format='png', dpi=figure_dpi)
+
 
 
 def get_episode_value_with_path(file_path, tag_name, epi_size=5000, print_log=False):
@@ -605,10 +818,11 @@ def draw_accum_reward(tag_name, scheme_name_set=["att", "DefAtt"]):
     HD_vary_set = [2, 0]
     all_scheme_path_set = {}
     # scheme_name_set = ["att", "def", "DefAtt"]
+    # time_vary_set, budget_vary_set, HD_vary_set, scheme, data_folder_name = 'data', defense_strategy = 0
     for scheme_name in scheme_name_set:
         all_scheme_path_set[schemeShort2schemeLong[scheme_name]] = all_none_trial_finder_2(time_vary_set,
                                                                                            budget_vary_set, HD_vary_set,
-                                                                                           scheme_name)
+                                                                                           scheme_name, data_folder_name='data 03.08.2023')
     # Draw figure
     epi_size = 5000
     lines = []
@@ -638,11 +852,13 @@ def draw_accum_reward(tag_name, scheme_name_set=["att", "DefAtt"]):
                     Y_ = X_Y_Spline(X_)
                     # Draw line
                     marker_step = int(len(X_)/5 - 1)
-                    line, = plt.plot(X_, Y_, linestyle=linestyle[key], linewidth=figure_linewidth,
-                                     markersize=marker_size, marker=marker_set[key], markevery=(0, marker_step), label=scheme2stringShort[key]+HD_str)
+                    legend_name = scheme2stringShort[key]+HD_str
+                    line, = plt.plot(X_, Y_, linestyle=linestyle_list[legend2index[legend_name]], linewidth=figure_linewidth,
+                                     markersize=marker_size, marker=marker_list[legend2index[legend_name]], markevery=(0, marker_step),
+                                     label=legend_name, color=color_list[legend2index[legend_name]])
                     lines.append(line)
 
-    # plt.legend(fontsize=legend_size)
+    plt.legend(fontsize=legend_size, prop={"size": legend_size})
     plt.xlabel("Episodes", fontsize=font_size)
     plt.ylabel(tag2equation[tag_name], fontsize=font_size)
     plt.xticks(fontsize=axis_size)
@@ -655,7 +871,7 @@ def draw_accum_reward(tag_name, scheme_name_set=["att", "DefAtt"]):
 
     # Draw legend
     fig = plt.figure()
-    figlegend = plt.figure(figsize=(6, 1.05))
+    figlegend = plt.figure(figsize=(10.3, 0.7))
 
     figlegend.legend(handles=lines, prop={"size": legend_size}, ncol=2)
     # fig.show()
@@ -683,53 +899,64 @@ def display_legend_eight_schemes(all_scheme_path):
     figlegend.savefig("figures/legend_eight.png", dpi=figure_dpi)
 
 
+# ======================== Global Setting (begin) ========================
+# make variables global for easy access
+setting_folder = '50_5'
+scheme_name = 'att'
+trial_id = 98
+tag_name = "Ratio of Mission Completion"
+# vary_set = [10, 15, 20, 25, 30]
+scheme2stringShort = {'rand-rand': "R-R", 'rl-rand': "A3C-R", 'rand-rl': "R-A3C", 'rl-rl': "A3C-A3C", 'IDS': 'A3C-IDS', 'CD': 'A3C-CD', 'no-defense': 'A3C-No-Defense'}
+scheme2stringLong = {'rand-rand': "A-Random, D-Random", 'rl-rand': "A-A3C, D-Random", 'rand-rl': "A-Random, D-A3C",
+                     'rl-rl': "A-A3C, D-A3C"}
+scheme2stringDuo = {'rand-rand': "A-Random\nD-Random", 'rl-rand': "A-A3C\nD-Random", 'rand-rl': "A-Random\nD-A3C",
+                     'rl-rl': "A-A3C\nD-A3C"}
+linestyle = {'rand-rand': '-', 'rl-rand': '--', 'rand-rl': '-.', 'rl-rl': ':', 'IDS': 'solid', 'CD': 'dashed', 'no-defense': 'dashdot'}
+marker_set = {'rand-rand': "p", 'rl-rand': "d", 'rand-rl': "v", 'rl-rl': "x", 'IDS': "s", 'CD': "*", 'no-defense': "o"}
+tag2stringLong = {"Ratio of Mission Completion": "Ratio of completed mission\n tasks",
+                  "Energy Consumption": "Energy consumption (mW)",
+                  "Attack Success Rate": "Attack success ratio",
+                  "Mission Time (step)": "Mission completion time",
+                  "Average Connect_RLD MD+HD Number": "Number of non-compromised,\n connected drones",
+                  "Accumulated Reward Attacker": "Attacker's Accumulated\nReward",
+                  "Accumulated Reward Defender": "Defender's Accumulated\nReward"}
+schemeShort2schemeLong = {"random": 'rand-rand', "att": 'rl-rand', "def": 'rand-rl', "DefAtt": 'rl-rl'}
+tag2equation = {"Ratio of Mission Completion": '$\mathcal{R}_{MC}$',
+                "Energy Consumption": '$\mathcal{EC}$',
+                "Attack Success Rate": '$\mathcal{ASR}$',
+                "Accumulated Reward Attacker": "$G^A$",
+                "Accumulated Reward Defender": "$G^D$",
+                "Mission Time (step)": "Mission completion time",
+                "Average Connect_RLD MD+HD Number": "Number of non-compromised,\n connected drones",
+                "Attack Success Counter": '$\mathcal{N}_{AS}$',
+                "Attack Launched Counter": "Number of attack launched\nin one episode",
+                "Running Time (s)": '$\mathcal{RT}_S$'}
+
+color_list = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink',
+             'tab:gray', 'tab:olive', 'tab:cyan']
+legend_list = ['A3C-A3C-HD', 'A3C-IDS', 'A3C-CD', 'A3C-No-Defense', 'A3C-R-HD', 'A3C-R-No-HD' 'A3C-A3C-No-HD',
+               'R-A3C-HD', 'R-R-HD', 'R-A3C-No-HD']
+legend2index = {'A3C-A3C-HD': 0, 'A3C-IDS': 1, 'A3C-CD': 2, 'A3C-No-Defense': 3, 'A3C-R-HD': 4, 'A3C-R-No-HD': 5,
+                'A3C-A3C-No-HD': 6, 'R-A3C-HD': 7, 'R-R-HD': 8, 'R-A3C-No-HD': 9}
+
+# setting for figure
+font_size = 25  # 25
+figure_high = 6  # 6
+figure_width = 7.5
+figure_linewidth = 3
+figure_dpi = 100
+legend_size = 18  # 18
+axis_size = 15
+marker_size = 12
+marker_list = ['o', 'v', 's', 'p', '*', 'x', 'd', 'h', '>', '<']
+bar_pattern = ["|", "\\", "/", "+", "-", ".", "*", "x", "o", "O"]
+linestyle_list = ['-', '--', '-.', ':', '-', '--', '-.', ':', '-', '--', '-.', ':']
+strategy_number = 8
+max_x_length = 60
+use_legend = False
+# ======================== Global Setting (end) ========================
 
 if __name__ == '__main__':
-    # setting for data to read
-    setting_folder = '50_5'
-    scheme_name = 'att'
-    trial_id = 98
-    tag_name = "Ratio of Mission Completion"
-    # vary_set = [10, 15, 20, 25, 30]
-    scheme2stringShort = {'rand-rand': "R-R", 'rl-rand': "A3C-R", 'rand-rl': "R-A3C", 'rl-rl': "A3C-A3C"}
-    scheme2stringLong = {'rand-rand': "A-Random, D-Random", 'rl-rand': "A-A3C, D-Random", 'rand-rl': "A-Random, D-A3C",
-                         'rl-rl': "A-A3C, D-A3C"}
-    scheme2stringDuo = {'rand-rand': "A-Random\nD-Random", 'rl-rand': "A-A3C\nD-Random", 'rand-rl': "A-Random\nD-A3C",
-                         'rl-rl': "A-A3C\nD-A3C"}
-    linestyle = {'rand-rand': '-', 'rl-rand': '--', 'rand-rl': '-.', 'rl-rl': ':'}
-    marker_set = {'rand-rand': "p", 'rl-rand': "d", 'rand-rl': "v", 'rl-rl': "x"}
-    tag2stringLong = {"Ratio of Mission Completion": "Ratio of completed mission\n tasks",
-                      "Energy Consumption": "Energy consumption (mW)",
-                      "Attack Success Rate": "Attack success ratio",
-                      "Mission Time (step)": "Mission completion time",
-                      "Average Connect_RLD MD+HD Number": "Number of non-compromised,\n connected drones",
-                      "Accumulated Reward Attacker": "Attacker's Accumulated\nReward",
-                      "Accumulated Reward Defender": "Defender's Accumulated\nReward"}
-    schemeShort2schemeLong = {"random": 'rand-rand', "att": 'rl-rand', "def": 'rand-rl', "DefAtt": 'rl-rl'}
-    tag2equation = {"Ratio of Mission Completion": '$\mathcal{R}_{MC}$',
-                    "Energy Consumption": '$\mathcal{EC}$',
-                    "Attack Success Rate": '$\mathcal{ASR}$',
-                    "Accumulated Reward Attacker": "$G^A$",
-                    "Accumulated Reward Defender": "$G^D$",
-                    "Mission Time (step)": "Mission completion time",
-                    "Average Connect_RLD MD+HD Number": "Number of non-compromised,\n connected drones",
-                    "Attack Success Counter": '$\mathcal{N}_{AS}$',
-                    "Attack Launched Counter": "Number of attack launched\nin one episode"}
-
-    # setting for figure
-    font_size = 25  # 25
-    figure_high = 6  # 6
-    figure_width = 7.5
-    figure_linewidth = 3
-    figure_dpi = 100
-    legend_size = 18  # 18
-    axis_size = 15
-    marker_size = 12
-    marker_list = ["p", "d", "v", "x", "s", "*", "1", "."]
-    bar_pattern = ["|", "\\", "/", "+", "-", ".", "*", "x", "o", "O"]
-    strategy_number = 8
-    max_x_length = 60
-    use_legend = False
 
     # find optimal defender's trial by looking at the reward
     # optimal_def_trial_finder(vary_set, 'def')
@@ -805,15 +1032,144 @@ if __name__ == '__main__':
     # draw_all_scheme_sens_analysis_2("Attack Launched Counter", vary_time=False)
 
     # Figure to show the Effect of Honey Drone
-    draw_eight_scheme_bar("Ratio of Mission Completion")
-    draw_eight_scheme_bar("Energy Consumption")
-    draw_eight_scheme_bar("Attack Success Rate")
+    # draw_eight_scheme_bar("Ratio of Mission Completion")
+    # draw_eight_scheme_bar("Energy Consumption")
+    # draw_eight_scheme_bar("Attack Success Rate")
     # draw_eight_scheme_bar_2("Attack Success Counter")
 
     # Figure to the accumulated reward
     # draw_accum_reward("Accumulated Reward Attacker", scheme_name_set=["att", "DefAtt"])
     # draw_accum_reward("Accumulated Reward Defender", scheme_name_set=["def", "DefAtt"])
 
+
+
+    '''
+    Below use Multiple Process to Generate Figures
+    '''
+
+    # Figure to show the Sensitivity Analysis
+    # Varying mission duration (time)
+    # p1 = Process(target=draw_all_scheme_sens_analysis_2, args=("Ratio of Mission Completion", True))
+    # p1.start()
+    # # draw_all_scheme_sens_analysis_2("Ratio of Mission Completion", vary_time=True)
+    #
+    # p2 = Process(target=draw_all_scheme_sens_analysis_2, args=("Energy Consumption", True))
+    # p2.start()
+    # # draw_all_scheme_sens_analysis_2("Energy Consumption", vary_time=True)
+    #
+    # p3 = Process(target=draw_all_scheme_sens_analysis_2, args=("Attack Success Rate", True))
+    # p3.start()
+    # # draw_all_scheme_sens_analysis_2("Attack Success Rate", vary_time=True)
+    #
+    # p4 = Process(target=draw_all_scheme_sens_analysis_2, args=("Mission Time (step)", True))
+    # p4.start()
+    # # draw_all_scheme_sens_analysis_2("Mission Time (step)", vary_time=True)
+    #
+    # p5 = Process(target=draw_all_scheme_sens_analysis_2, args=("Average Connect_RLD MD+HD Number", True))
+    # p5.start()
+    # # draw_all_scheme_sens_analysis_2("Average Connect_RLD MD+HD Number", vary_time=True)
+    #
+    # p6 = Process(target=draw_all_scheme_sens_analysis_2, args=("Attack Success Counter", True))
+    # p6.start()
+    # # draw_all_scheme_sens_analysis_2("Attack Success Counter", vary_time=True)
+    #
+    # p7 = Process(target=draw_all_scheme_sens_analysis_2, args=("Attack Launched Counter", True))
+    # p7.start()
+    # # draw_all_scheme_sens_analysis_2("Attack Launched Counter", vary_time=True)
+
+
+
+    # Varying attack budget
+    p8 = Process(target=draw_all_scheme_sens_analysis_2 , args=("Ratio of Mission Completion", False))
+    p8.start()
+    # draw_all_scheme_sens_analysis_2("Ratio of Mission Completion", vary_time=False)
+
+    p9 = Process(target=draw_all_scheme_sens_analysis_2, args=("Energy Consumption", False))
+    p9.start()
+    # draw_all_scheme_sens_analysis_2("Energy Consumption", vary_time=False)
+
+    p10 = Process(target=draw_all_scheme_sens_analysis_2, args=("Attack Success Rate", False))
+    p10.start()
+    # draw_all_scheme_sens_analysis_2("Attack Success Rate", vary_time=False)
+
+    p11 = Process(target=draw_all_scheme_sens_analysis_2, args=("Mission Time (step)", False))
+    p11.start()
+    # draw_all_scheme_sens_analysis_2("Mission Time (step)", vary_time=False)
+
+    p12 = Process(target=draw_all_scheme_sens_analysis_2, args=("Average Connect_RLD MD+HD Number", False))
+    p12.start()
+    # draw_all_scheme_sens_analysis_2("Average Connect_RLD MD+HD Number", vary_time=False)
+
+    p13 = Process(target=draw_all_scheme_sens_analysis_2, args=("Attack Success Counter", False))
+    p13.start()
+    # draw_all_scheme_sens_analysis_2("Attack Success Counter", vary_time=False)
+
+    p14 = Process(target=draw_all_scheme_sens_analysis_2, args=("Attack Launched Counter", False))
+    p14.start()
+    # draw_all_scheme_sens_analysis_2("Attack Launched Counter", vary_time=False)
+
+
+    # Figure to show the Effect of Honey Drone
+    # p15 = Process(target=draw_eight_scheme_bar, args=("Ratio of Mission Completion",))
+    # p15.start()
+    # # draw_eight_scheme_bar("Ratio of Mission Completion")
+    #
+    # p16 = Process(target=draw_eight_scheme_bar, args=("Energy Consumption",))
+    # p16.start()
+    # # draw_eight_scheme_bar("Energy Consumption")
+    #
+    # p17 = Process(target=draw_eight_scheme_bar, args=("Attack Success Rate",))
+    # p17.start()
+    # # draw_eight_scheme_bar("Attack Success Rate")
+    #
+    # p18 = Process(target=draw_eight_scheme_bar, args=("Attack Success Counter",))
+    # p18.start()
+    # # draw_eight_scheme_bar_2("Attack Success Counter")
+
+    # p19 = Process(target=draw_eight_scheme_bar, args=("Running Time (s)",))
+    # p19.start()
+
+    # Figure to the comparison with other defense techniques
+    # p20 = Process(target=draw_four_scheme_bar, args=("Ratio of Mission Completion",))
+    # p20.start()
+    #
+    # p21 = Process(target=draw_four_scheme_bar, args=("Energy Consumption",))
+    # p21.start()
+    #
+    # p22 = Process(target=draw_four_scheme_bar, args=("Attack Success Rate",))
+    # p22.start()
+    #
+    # p23 = Process(target=draw_four_scheme_bar, args=("Attack Success Counter",))
+    # p23.start()
+    #
+    # p24 = Process(target=draw_four_scheme_bar, args=("Running Time (s)",))
+    # p24.start()
+
+    # p2_1 = Process(target=draw_def_strategies_compare_analysis, args=("Ratio of Mission Completion", True))
+    # p2_1.start()
+    #
+    # p2_2 = Process(target=draw_def_strategies_compare_analysis, args=("Energy Consumption", True))
+    # p2_2.start()
+    #
+    # p2_3 = Process(target=draw_def_strategies_compare_analysis, args=("Attack Success Counter", True))
+    # p2_3.start()
+    #
+    # p2_4 = Process(target=draw_def_strategies_compare_analysis, args=("Attack Success Rate", True))
+    # p2_4.start()
+    #
+    # p2_5 = Process(target=draw_def_strategies_compare_analysis, args=("Running Time (s)", True))
+    # p2_5.start()
+
+
+
+    # Figure to the accumulated reward
+    # p25 = Process(target=draw_accum_reward, args=("Accumulated Reward Attacker", ["att", "DefAtt"]))
+    # p25.start()
+    # # draw_accum_reward("Accumulated Reward Attacker", scheme_name_set=["att", "DefAtt"])
+    #
+    # p26 = Process(target=draw_accum_reward, args=("Accumulated Reward Defender", ["def", "DefAtt"]))
+    # p26.start()
+    # # draw_accum_reward("Accumulated Reward Defender", scheme_name_set=["def", "DefAtt"])
 
 
 

@@ -1,6 +1,7 @@
 from model_player import player_model
 import random
 import numpy as np
+import torch
 from collections import defaultdict
 
 class attacker_model(player_model):
@@ -24,13 +25,14 @@ class attacker_model(player_model):
         self.target_set = []
         self.epsilon = 0.5                      # variable used in determine target range
         self.attack_success_prob = 0.43          # attack success rate of each attack on each drone  # use CVSS from android device https://www.cvedetails.com/cve/CVE-2021-39804/
+        self.defense_strategy = defense_strategy  # the strategy used by defender to defend against attacker (0: HD+dynamic signal, 1: IDS+static signal)
+        if self.defense_strategy == 1:
+            self.attack_success_prob = self.attack_success_prob * 0.9  # IDS can reduce attack success rate by 10%
         self.attack_RLD_prob = 0.0001           # attack success rate of RLD
         self.att_counter = 0    # number of attack launched in a round
         self.att_succ_counter = 0  # count the number of drone compromised in a round
         self.max_att_budget = max_att_budget     # the maximum number of attack can launch in a round
-        self.defense_strategy = defense_strategy # the strategy used by defender to defend against attacker (0: HD+dynamic signal, 1: IDS+static signal)
-        if self.defense_strategy == 1:
-            self.attack_success_prob = self.attack_success_prob * 0.9  # IDS can reduce attack success rate by 10%
+
 
     def signal2strategy(self, obs_signal):
         conditions = lambda x: {
@@ -121,14 +123,24 @@ class attacker_model(player_model):
             self.att_counter += 1
             # attack MD
             if drone.type == "MD":
-                # only attack not crashed drone
-                if random.uniform(0, 1) < self.attack_success_prob:
-                    # print("attack success with probability:", self.attack_success_prob)
-                    if self.print: print("attack success:", drone)
-                    drone.xyz[2] = 0
-                    drone.xyz_temp[2] = 0
-                    drone.crashed = True
-                    self.att_succ_counter += 1
+                if self.defense_strategy == 2:
+                    # if MD use strategy 2, it will not be compromised. Instead, the drone cannot continue mission (memory full)
+                    drone.memory_full = True
+                else:
+                    # if self.defense_strategy == 1 or self.defense_strategy == 3:
+                    #     # use no fixed random seed for avoid the error of no success attacks
+                    #     temp_dice = torch.rand((1,)).item()
+                    # else:
+                    #     temp_dice = random.uniform(0, 1)
+                    temp_dice = torch.rand((1,)).item()
+
+                    # for other strategies, MD will be compromised
+                    if temp_dice < self.attack_success_prob:
+                        if self.print: print("attack success:", drone)
+                        drone.xyz[2] = 0
+                        drone.xyz_temp[2] = 0
+                        drone.crashed = True
+                        self.att_succ_counter += 1
             # attack RLD
             elif drone.type == "RLD":
                 if random.uniform(0, 1) < self.attack_RLD_prob:

@@ -114,7 +114,7 @@ class HyperGameSim(Env):
 
         '''
         self.start_time = time.time()
-        self.initDroneEnv(miss_dur, target_size, max_att_budget, num_HD)
+        self.initDroneEnv(miss_dur, target_size, max_att_budget, num_HD, self.defense_strategy)
         # self.system.mission_duration_max = miss_dur
         # self.system.map_cell_number = target_size
 
